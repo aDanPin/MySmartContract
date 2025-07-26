@@ -66,26 +66,24 @@ contract CharacterSheet {
         AbilityScores abilityScores;
     }
 
-    mapping (address => Change[]) changes;
-    mapping(address => Character) characters;
+    mapping (address => Change[]) public changes;
+    mapping (address => Character) public  characters;
 
     function CommitChangeCharacter(
-                address owner,
                 AbilityScores calldata abilityScores 
-    ) internal {
-        sum(characters[owner].sheet.abilityScores, abilityScores);
-        changes[owner].push(Change(block.timestamp, abilityScores));
+    ) public {
+        sum(characters[msg.sender].sheet.abilityScores, abilityScores);
+        changes[msg.sender].push(Change(block.timestamp, abilityScores));
     }
 
     function InitCharacter(
-                address owner,
                 bytes32 name,
                 RaceClass raceClass,
                 AbilityScores calldata abilityScores
-    ) internal {
-        Character storage character = characters[owner];
+    ) public {
+        Character storage character = characters[msg.sender];
         character.sheet.name = name;
         character.sheet.raceClass = raceClass;
-        CommitChangeCharacter(owner, abilityScores);
+        CommitChangeCharacter(abilityScores);
     }
 }
