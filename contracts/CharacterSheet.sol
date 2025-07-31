@@ -67,7 +67,16 @@ contract CharacterSheet {
     }
 
     modifier validLevel(uint8 level) {
-        require(level > 0 && level <= MAX_LEVEL, "Invalid level");
+        require(level > 0 
+            && level <= MAX_LEVEL
+            && abilityScoresHistory[msg.sender][abilityScoresHistory[msg.sender].length].level >= level, 
+            "Invalid level");
+        _;
+    }
+
+    modifier validName(bytes32 name) {
+        require(name != bytes32(0), 
+            "Invalid namme");
         _;
     }
 
@@ -77,6 +86,7 @@ contract CharacterSheet {
     ) 
         public 
         characterDoesNotExist()
+        validName(character.name)
         validLevel(abilityScores.level)
         validAbilityScores(abilityScores)
     {
