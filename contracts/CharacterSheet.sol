@@ -21,7 +21,7 @@ contract CharacterSheet {
         HalflingThief
     }
 
-    struct StableCharacterInfo {
+    struct Character {
         bytes32 name;
         RaceClass raceClass;
     }
@@ -37,46 +37,120 @@ contract CharacterSheet {
         uint8 cha;
     }
 
-    mapping (address => AbilityScores[]) public abilityScores;
-    mapping (address => StableCharacterInfo) public  characters;
+    // Constants for validation
+    uint8 public constant MIN_ABILITY_SCORE = 3;
+    uint8 public constant MAX_ABILITY_SCORE = 18;
+    uint8 public constant MAX_LEVEL = 20;
 
-    function getSum(
-        uint8 level,
-        uint8 str,
-        uint8 dex,
-        uint8 con,
-        uint8 intell,
-        uint8 wis,
-        uint8 cha
-    ) internal view returns (AbilityScores memory) {
-        AbilityScores memory sumAbilityScore = abilityScores[msg.sender][abilityScores[msg.sender].length];
+    mapping(address => Character) public characters;
+    mapping(address => AbilityScores[]) public abilityScoresHistory;
 
-        sumAbilityScore.timestamp = block.timestamp;
-        sumAbilityScore.level = sumAbilityScore.level +  level;
-        sumAbilityScore.str = sumAbilityScore.str +    str;
-        sumAbilityScore.dex = sumAbilityScore.dex +    dex;
-        sumAbilityScore.con = sumAbilityScore.con +    con;
-        sumAbilityScore.intell = sumAbilityScore.intell + intell;
-        sumAbilityScore.wis = sumAbilityScore.wis +    wis;
-        sumAbilityScore.cha = sumAbilityScore.cha +    cha;
-
-        return sumAbilityScore;
+    // Modifiers for better code organization
+    modifier characterExists() {
+        require(abilityScoresHistory[msg.sender].length > 0, "Character does not exist");
+        _;
     }
 
-    function CommitChangeCharacter(uint8 level, uint8 str, uint8 dex, uint8 con, uint8 intell, uint8 wis, uint8 cha) public {
-        abilityScores[msg.sender].push(
-            getSum( level, str, dex, con, intell, wis, cha)
+    modifier characterDoesNotExist() {
+        require(abilityScoresHistory[msg.sender].length <= 0, "Character already exists");
+        _;
+    }
+
+    modifier validAbilityScores(AbilityScores calldata abilityScores) {
+        require(abilityScores.str >= MIN_ABILITY_SCORE && abilityScores.str <= MAX_ABILITY_SCORE, "Invalid strength score");
+        require(abilityScores.dex >= MIN_ABILITY_SCORE && abilityScores.dex <= MAX_ABILITY_SCORE, "Invalid dexterity score");
+        require(abilityScores.con >= MIN_ABILITY_SCORE && abilityScores.con <= MAX_ABILITY_SCORE, "Invalid constitution score");
+        require(abilityScores.intell >= MIN_ABILITY_SCORE && abilityScores.intell <= MAX_ABILITY_SCORE, "Invalid intelligence score");
+        require(abilityScores.wis >= MIN_ABILITY_SCORE && abilityScores.wis <= MAX_ABILITY_SCORE, "Invalid wisdom score");
+        require(abilityScores.cha >= MIN_ABILITY_SCORE && abilityScores.cha <= MAX_ABILITY_SCORE, "Invalid charisma score");
+        _;
+    }
+
+    modifier validLevel(uint8 level) {
+        require(level > 0 && level <= MAX_LEVEL, "Invalid level");
+        _;
+    }
+
+    function createCharacter(
+        Character calldata character,
+        AbilityScores calldata abilityScores
+    ) 
+        public 
+        characterDoesNotExist()
+        validLevel(abilityScores.level)
+        validAbilityScores(abilityScores)
+    {
+        characters[msg.sender] = character;
+        
+        // Store initial ability scores in history
+        abilityScoresHistory[msg.sender].push(AbilityScores({
+            timestamp: block.timestamp,
+            level: abilityScores.level,
+            str: abilityScores.str,
+            dex: abilityScores.dex,
+            con: abilityScores.con,
+            intell: abilityScores.intell,
+            wis: abilityScores.wis,
+            cha: abilityScores.cha
+        }));
+    }
+
+    function addChangeCharacter(
+        AbilityScores calldata abilityScores
+    ) 
+        public 
+        characterExists
+        validLevel(abilityScores.level)
+        validAbilityScores(abilityScores)
+    {
+        // Store historical ability scores
+        abilityScoresHistory[msg.sender].push(AbilityScores({
+            timestamp: block.timestamp,
+            level: abilityScores.level,
+            str: abilityScores.str,
+            dex: abilityScores.dex,
+            con: abilityScores.con,
+            intell: abilityScores.intell,
+            wis: abilityScores.wis,
+            cha: abilityScores.cha
+        }));
+    }
+
+    function getCharacter() 
+        public 
+        view 
+        characterExists
+        returns (
+            Character memory,
+            AbilityScores memory
+        ) 
+    {
+        return (
+            characters[msg.sender],
+            abilityScoresHistory[msg.sender][abilityScoresHistory[msg.sender].length - 1]
         );
     }
 
-    function InitCharacter(
-                bytes32 name,
-                RaceClass raceClass,
-                uint8 level, uint8 str, uint8 dex, uint8 con, uint8 intell, uint8 wis, uint8 cha
-    ) public {
-        StableCharacterInfo storage character = characters[msg.sender];
-        character.name = name;
-        character.raceClass = raceClass;
-        CommitChangeCharacter(level, str, dex, con, intell, wis, cha);
+    function getAbilityScoresHistory() 
+        public 
+        view 
+        characterExists
+        returns (AbilityScores[] memory) 
+    {
+        return abilityScoresHistory[msg.sender];
+    }
+
+    function getAbilityScoresHistoryLength() 
+        public 
+        view
+        characterExists 
+        returns (uint256) 
+    {
+        return abilityScoresHistory[msg.sender].length;
+    }
+
+    function deleteCharacter() public characterExists {
+        delete characters[msg.sender];
+        delete abilityScoresHistory[msg.sender];
     }
 }
