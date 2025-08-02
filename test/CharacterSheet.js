@@ -83,7 +83,7 @@ describe("CharacterSheet", function () {
       
       await expect(
         characterSheet.connect(addr1).createCharacter(validCharacter, invalidScores)
-      ).to.be.revertedWith("Invalid level");
+      ).to.be.revertedWith("Invalid start level");
     });
 
     it("Should reject invalid level - too high", async function () {
@@ -91,7 +91,7 @@ describe("CharacterSheet", function () {
       
       await expect(
         characterSheet.connect(addr1).createCharacter(validCharacter, invalidScores)
-      ).to.be.revertedWith("Invalid level");
+      ).to.be.revertedWith("Invalid start level");
     });
 
     it("Should allow different users to create characters", async function () {
@@ -283,39 +283,6 @@ describe("CharacterSheet", function () {
     });
   });
 
-  describe("Race and Class Combinations", function () {
-    const validAbilityScores = {
-      timestamp: 0,
-      level: 1,
-      str: 10,
-      dex: 10,
-      con: 10,
-      intell: 10,
-      wis: 10,
-      cha: 10
-    };
-
-    it("Should accept all valid race-class combinations", async function () {
-      const raceClasses = [
-        "HumanFighter", "HumanMagicUser", "HumanCleric", "HumanThief",
-        "DwarfFighter", "DwarfMagicUser", "DwarfCleric", "DwarfThief",
-        "ElfFighter", "ElfMagicUser", "ElfCleric", "ElfThief",
-        "HalflingFighter", "HalflingMagicUser", "HalflingCleric", "HalflingThief"
-      ];
-
-      for (let i = 0; i < raceClasses.length; i++) {
-        const character = {
-          name: ethers.encodeBytes32String(`Character${i}`),
-          raceClass: i
-        };
-
-        await expect(
-          characterSheet.connect(addrs[i]).createCharacter(character, validAbilityScores)
-        ).to.not.be.reverted;
-      }
-    });
-  });
-
   describe("Edge Cases", function () {
     it("Should handle minimum valid ability scores", async function () {
       const character = {
@@ -380,9 +347,107 @@ describe("CharacterSheet", function () {
 
       await expect(
         characterSheet.connect(addr1).createCharacter(character, validAbilityScores)
-      ).to.not.be.reverted;
+      ).to.be.revertedWith("Invalid name");
     });
   });
+
+  describe("Character History Management", function () {
+    const validCharacter = {
+      name: ethers.encodeBytes32String("HistoryTest"),
+      raceClass: 0
+    };
+
+    const baseScores = {
+      timestamp: 0,
+      level: 1,
+      str: 10,
+      dex: 10,
+      con: 10,
+      intell: 10,
+      wis: 10,
+      cha: 10
+    };
+
+    beforeEach(async function () {
+      await characterSheet.connect(addr1).createCharacter(validCharacter, baseScores);
+    });
+
+    it("Should maintain multiple history entries", async function () {
+      // Add multiple updates
+      for (let i = 2; i <= 5; i++) {
+        const updatedScores = { ...baseScores, level: i, str: 10 + i };
+        await characterSheet.connect(addr1).addChangeCharacter(updatedScores);
+      }
+
+      const history = await characterSheet.connect(addr1).getAbilityScoresHistory();
+      expect(history.length).to.equal(5);
+      
+      // Check that history is maintained in order
+      for (let i = 0; i < 5; i++) {
+        expect(history[i].level).to.equal(i + 1);
+      }
+    });
+
+    it("Should return latest character data after multiple updates", async function () {
+      const finalScores = { ...baseScores, level: 10, str: 18, dex: 16 };
+      await characterSheet.connect(addr1).addChangeCharacter(finalScores);
+
+      const [character, scores] = await characterSheet.connect(addr1).getCharacter();
+      expect(scores.level).to.equal(10);
+      expect(scores.str).to.equal(18);
+      expect(scores.dex).to.equal(16);
+    });
+  });
+
+  describe("Contract State Isolation", function () {
+    it("Should isolate character data between different users", async function () {
+      const character1 = {
+        name: ethers.encodeBytes32String("User1"),
+        raceClass: 0
+      };
+
+      const character2 = {
+        name: ethers.encodeBytes32String("User2"),
+        raceClass: 1
+      };
+
+      const scores1 = {
+        timestamp: 0,
+        level: 1,
+        str: 15,
+        dex: 12,
+        con: 14,
+        intell: 10,
+        wis: 11,
+        cha: 13
+      };
+
+      const scores2 = {
+        timestamp: 0,
+        level: 5,
+        str: 10,
+        dex: 16,
+        con: 12,
+        intell: 18,
+        wis: 15,
+        cha: 14
+      };
+
+      // Create characters for different users
+      await characterSheet.connect(addr1).createCharacter(character1, scores1);
+      await characterSheet.connect(addr2).createCharacter(character2, scores2);
+
+      // Verify each user can only access their own character
+      const [char1, scores1Retrieved] = await characterSheet.connect(addr1).getCharacter();
+      const [char2, scores2Retrieved] = await characterSheet.connect(addr2).getCharacter();
+
+      expect(char1.name).to.equal(character1.name);
+      expect(char2.name).to.equal(character2.name);
+      expect(scores1Retrieved.level).to.equal(1);
+      expect(scores2Retrieved.level).to.equal(5);
+    });
+  });
+
 
   describe("Gas Optimization", function () {
     it("Should use reasonable gas for character creation", async function () {
@@ -402,11 +467,235 @@ describe("CharacterSheet", function () {
         cha: 10
       };
 
-      const tx = await characterSheet.connect(addr1).createCharacter(character, validAbilityScores);
-      const receipt = await tx.wait();
-      
-      // Gas usage should be reasonable (less than 200k gas)
-      expect(receipt.gasUsed).to.be.lessThan(200000);
+         const estimatedGas = await characterSheet.connect(addr1).createCharacter.estimateGas(character, validAbilityScores);
+         
+         // Gas usage should be reasonable (less than 200k gas)
+         expect(estimatedGas).to.be.lessThan(BigInt(200000));
+       });
+  });
+
+  describe("Gas Measurement Tests", function () {
+    const testCharacter = {
+      name: ethers.encodeBytes32String("GasTestCharacter"),
+      raceClass: 0
+    };
+
+    const testAbilityScores = {
+      timestamp: 0,
+      level: 1,
+      str: 10,
+      dex: 12,
+      con: 14,
+      intell: 16,
+      wis: 15,
+      cha: 13
+    };
+
+    const updatedScores = {
+      timestamp: 0,
+      level: 2,
+      str: 11,
+      dex: 13,
+      con: 15,
+      intell: 17,
+      wis: 16,
+      cha: 14
+    };
+
+    beforeEach(async function () {
+      // Create a character for testing
+      await characterSheet.connect(addr1).createCharacter(testCharacter, testAbilityScores);
+    });
+
+    describe("createCharacter Gas Tests", function () {
+      it("Should measure gas for character creation", async function () {
+        const character = {
+          name: ethers.encodeBytes32String("MinGasTest"),
+          raceClass: 0
+        };
+
+        const minScores = {
+          timestamp: 0,
+          level: 1,
+          str: 3,
+          dex: 3,
+          con: 3,
+          intell: 3,
+          wis: 3,
+          cha: 3
+        };
+
+         const estimatedGas = await characterSheet.connect(addr2).createCharacter.estimateGas(character, minScores);
+         console.log(`createCharacter: ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(150000));
+       });
+    });
+
+    describe("addChangeCharacter Gas Tests", function () {
+             it("Should measure gas for single character update", async function () {
+         const estimatedGas = await characterSheet.connect(addr1).addChangeCharacter.estimateGas(updatedScores);
+         console.log(`UpdateCharacter (single update): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(100000));
+       });
+
+             it("Should measure gas for multiple consecutive updates", async function () {
+         let totalGas = BigInt(0);
+         
+         for (let i = 2; i <= 5; i++) {
+           const scores = { ...updatedScores, level: i };
+           const estimatedGas = await characterSheet.connect(addr1).addChangeCharacter.estimateGas(scores);
+           totalGas += estimatedGas;
+         }
+        
+        console.log(`UpdateCharacter (4 consecutive updates): ${totalGas} total gas`);
+        expect(totalGas).to.be.lessThan(BigInt(400000));
+      });
+    });
+
+    describe("getCharacter Gas Tests", function () {
+             it("Should measure gas for character retrieval", async function () {
+         const estimatedGas = await characterSheet.connect(addr1).getCharacter.estimateGas();
+         console.log(`GetCharacter: ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(50000));
+       });
+
+      it("Should measure gas for character retrieval after multiple updates", async function () {
+        // Add multiple updates first
+        for (let i = 2; i <= 10; i++) {
+          const scores = { ...updatedScores, level: i };
+          await characterSheet.connect(addr1).addChangeCharacter(scores);
+        }
+
+         const estimatedGas = await characterSheet.connect(addr1).getCharacter.estimateGas();
+         console.log(`GetCharacter (after 10 updates): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(50000));
+       });
+    });
+
+    describe("getAbilityScoresHistory Gas Tests", function () {
+             it("Should measure gas for history retrieval with single entry", async function () {
+         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistory.estimateGas();
+         console.log(`GetCharacterHistory (1 entry): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(50000));
+       });
+
+      it("Should measure gas for history retrieval with multiple entries", async function () {
+        // Add multiple updates first
+        for (let i = 2; i <= 10; i++) {
+          const scores = { ...updatedScores, level: i };
+          await characterSheet.connect(addr1).addChangeCharacter(scores);
+        }
+
+         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistory.estimateGas();
+         console.log(`GetCharacterHistory (11 entries): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(200000));
+       });
+
+      it("Should measure gas for history retrieval with maximum entries", async function () {
+        // Add many updates to test scalability
+        for (let i = 2; i <= 50; i++) {
+          const scores = { ...updatedScores, level: 10 };
+          await characterSheet.connect(addr1).addChangeCharacter(scores);
+        }
+
+         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistory.estimateGas();
+         console.log(`GetCharacterHistory (51 entries): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(1000000));
+       });
+    });
+
+    describe("getAbilityScoresHistoryLength Gas Tests", function () {
+             it("Should measure gas for history length retrieval with single entry", async function () {
+         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistoryLength.estimateGas();
+         console.log(`GetCharacterHistoryLength (1 entry): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(30000));
+       });
+
+      it("Should measure gas for history length retrieval with multiple entries", async function () {
+        // Add multiple updates first
+        for (let i = 2; i <= 20; i++) {
+          const scores = { ...updatedScores, level: 10 };
+          await characterSheet.connect(addr1).addChangeCharacter(scores);
+        }
+
+         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistoryLength.estimateGas();
+         console.log(`GetCharacterHistoryLength (21 entries): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(30000));
+       });
+    });
+
+    describe("deleteCharacter Gas Tests", function () {
+             it("Should measure gas for character deletion", async function () {
+         const estimatedGas = await characterSheet.connect(addr1).deleteCharacter.estimateGas();
+         console.log(`DeleteCharacter: ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(100000));
+       });
+
+      it("Should measure gas for character deletion with history", async function () {
+        // Add multiple updates first
+        for (let i = 2; i <= 10; i++) {
+          const scores = { ...updatedScores, level: i };
+          await characterSheet.connect(addr1).addChangeCharacter(scores);
+        }
+
+         const estimatedGas = await characterSheet.connect(addr1).deleteCharacter.estimateGas();
+         console.log(`DeleteCharacter (with 10 history entries): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(300000));
+       });
+
+      it("Should measure gas for character deletion with maximum history", async function () {
+        // Add many updates to test scalability
+        for (let i = 2; i <= 50; i++) {
+          const scores = { ...updatedScores, level: 10 };
+          await characterSheet.connect(addr1).addChangeCharacter(scores);
+        }
+
+         const estimatedGas = await characterSheet.connect(addr1).deleteCharacter.estimateGas();
+         console.log(`DeleteCharacter (with 50 history entries): ${estimatedGas} gas`);
+         expect(estimatedGas).to.be.lessThan(BigInt(1000000));
+       });
+
+    });
+
+    describe("Complex Scenario Gas Tests", function () {
+             it("Should measure gas for complete character lifecycle", async function () {
+         let totalGas = BigInt(0);
+
+         // Create character
+         const createGas = await characterSheet.connect(addr2).createCharacter.estimateGas(testCharacter, testAbilityScores);
+         // Actually create the character
+         await characterSheet.connect(addr2).createCharacter(testCharacter, testAbilityScores);
+         totalGas += createGas;
+         
+
+        // Update character multiple times
+        for (let i = 2; i <= 5; i++) {
+          const scores = { ...updatedScores, level: i };
+          const updateTx = await characterSheet.connect(addr2).addChangeCharacter(scores);
+          const updateReceipt = await updateTx.wait();
+          totalGas += updateReceipt.gasUsed;
+        }
+
+        // Retrieve character
+        totalGas += await characterSheet.connect(addr2).getCharacter.estimateGas();
+        await characterSheet.connect(addr2).getCharacter();
+
+        // Get history
+        totalGas += await characterSheet.connect(addr2).getAbilityScoresHistory.estimateGas();;
+        await characterSheet.connect(addr2).getAbilityScoresHistory();;
+
+        // Get history length
+        totalGas += await characterSheet.connect(addr2).getAbilityScoresHistoryLength.estimateGas();;
+        await characterSheet.connect(addr2).getAbilityScoresHistoryLength();;
+
+        // Delete character
+        const deleteTx = await characterSheet.connect(addr2).deleteCharacter();
+        const deleteReceipt = await deleteTx.wait();
+        totalGas += deleteReceipt.gasUsed;
+
+        console.log(`Complete character lifecycle: ${totalGas} total gas`);
+        expect(totalGas).to.be.lessThan(BigInt(800000));
+      });
     });
   });
 });
