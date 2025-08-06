@@ -23,22 +23,29 @@ contract Bet {
         // 5 - draw
     }
 
+    struct Win {
+        uint256 betId;
+        uint256 win;
+        bool completed;
+    }
+
     mapping(uint256 => mapping(address => uint256)) internal xBets; // betId => Address => amount bet on X
     mapping(uint256 => mapping(address => uint256)) internal yBets; // betId => Address => amount bet on Y
     mapping(uint256 => address[]) internal xParticipants; // betId => Address
     mapping(uint256 => address[]) internal yParticipants; // betId => Address
+    mapping(address => Win[]) winners;
+
 
     // Bet rounds tracking
     mapping(uint256 => BetRound) internal betRounds;
-    uint256[] internal activeRoundIds;
     uint256 internal nextRoundId = 0;
     
     // Events
     event BetRoundCreated(uint256 indexed roundId, bytes32 indexed description);
     event BetRoundEnded(uint256 indexed roundId, bytes32 indexed description, uint8 indexed betState);
     
-    modifier onlyCreator(BetRound calldata betRound, address caller) {
-        require(betRound.creator == caller, "Only creator can call this function");
+    modifier onlyCreator(uint256 roundId) {
+        require(betRounds[roundId].creator == msg.sender, "Only creator can call this function");
         _;
     }
     
@@ -84,9 +91,8 @@ contract Bet {
         newRound.description = description;
         newRound.startTime = block.timestamp;
         newRound.betState = 1;
-        
-        activeRoundIds.push(roundId);
-        
+        newRound.creatorFee = creatorsFee;
+
         emit BetRoundCreated(roundId, description);
         
         return roundId;
@@ -114,13 +120,13 @@ contract Bet {
     
     // Resolve a specific betting round
     function resolveBetRound(uint256 roundId, uint8 state)
-        external onlyCreator 
+        external onlyCreator(roundId) 
                  roundExists(roundId)
                  roundActive(roundId)
                  finishingState(state) {
         BetRound storage round = betRounds[roundId];
         round.endTime = block.timestamp;
-        round.state = state;
+        round.betState = state;
         
         if(state == 2) { // cancel
 
@@ -151,26 +157,27 @@ contract Bet {
         uint256 sentAmount = 0;
         
         // SCALE STARTS HERE
-        uint256 betScale = (SCALE * betAmount) / betRound.totalXBetAmount;
+        uint256 betScale = (SCALE * winningPool) / betRound.totalXBetAmount;
 
         address[] storage winnersPool = xParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
             uint256 win = xBets[roundId][winner] * betScale / SCALE;
             // SCALE ENDS HERE
-            (bool sent, bytes memory data) = winner.call{value: win}("");
-            if (sent) {
-                sentAmount += win;
+            if (sentAmount + win < winningPool) {
+                winners[winner].push(Win(roundId, win, false));
             }
             else {
-                // TODO: error handle
+                // todo:: Error handle
             }
         }
 
         creatorFeeAmount = betAmount - sentAmount;
-        (bool creatorSent, bytes memory creatorData) = betRound.creator.call{value: creatorFeeAmount}("");
-        if (!creatorSent) {
-            // TODO: error handle
+        if (creatorFeeAmount >= 0) {
+            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, false));
+        }
+        else {
+            // todo:: Error handle
         }
     }
 
@@ -187,35 +194,37 @@ contract Bet {
         uint256 sentAmount = 0;
         
         // SCALE STARTS HERE
-        uint256 betScale = (SCALE * betAmount) / betRound.totalYBetAmount;
+        uint256 betScale = (SCALE * winningPool) / betRound.totalYBetAmount;
 
-        address[] storage winnersPool = xParticipants[roundId];
+        address[] storage winnersPool = yParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
             uint256 win = yBets[roundId][winner] * betScale / SCALE;
             // SCALE ENDS HERE
-            (bool sent, bytes memory data) = winner.call{value: win}("");
-            if (sent) {
-                sentAmount += win;
+            if (sentAmount + win < winningPool) {
+                winners[winner].push(Win(roundId, win, false));
             }
             else {
-                // TODO: error handle
+                // todo:: Error handle
             }
         }
 
         creatorFeeAmount = betAmount - sentAmount;
-        (bool creatorSent, bytes memory creatorData) = betRound.creator.call{value: creatorFeeAmount}("");
-        if (!creatorSent) {
-            // TODO: error handle
+        if (creatorFeeAmount >= 0) {
+            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, false));
+        }
+        else {
+            // todo:: Error handle
         }
     }
 
     // Get bet round information
     function getBetRoundInfo(uint256 roundId) external view roundExists(roundId) returns (
-        Bet bet
+        BetRound memory
     ) {
         BetRound storage round = betRounds[roundId];
-        return (
+
+        return BetRound(
             round.description,
             round.startTime,
             round.endTime,
@@ -227,29 +236,8 @@ contract Bet {
         );
     }
     
-    // Get all active round IDs
-    function getActiveRoundIds() external view returns (uint256[] memory) {
-        return activeRoundIds;
-    }
-    
     // Get total number of rounds
     function getTotalRounds() external view returns (uint256) {
         return nextRoundId - 1;
-    }
-    
-    // Helper function to remove round from active rounds
-    function _removeFromActiveRounds(uint256 roundId) internal {
-        for (uint256 i = 0; i < activeRoundIds.length; i++) {
-            if (activeRoundIds[i] == roundId) {
-                activeRoundIds[i] = activeRoundIds[activeRoundIds.length - 1];
-                activeRoundIds.pop();
-                break;
-            }
-        }
-    }
-    
-    // Check if user has claimed winnings for a round
-    function hasClaimedWinnings(uint256 roundId, address user) external view roundExists(roundId) returns (bool) {
-        return betRounds[roundId].hasClaimedWinnings[user];
     }
 }
