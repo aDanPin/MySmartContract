@@ -33,8 +33,9 @@ contract Bet {
     mapping(uint256 => mapping(address => uint256)) internal yBets; // betId => Address => amount bet on Y
     mapping(uint256 => address[]) internal xParticipants; // betId => Address
     mapping(uint256 => address[]) internal yParticipants; // betId => Address
+    
+    // TODO: Think about more chip architecture
     mapping(address => Win[]) winners;
-
 
     // Bet rounds tracking
     mapping(uint256 => BetRound) internal betRounds;
@@ -295,5 +296,28 @@ contract Bet {
     // Get total number of rounds
     function getTotalRounds() external view returns (uint256) {
         return nextRoundId - 1;
+    }
+
+    // TODO: Think about more chip architecture
+    function claimWin(uint256 betId) external payable {
+        Win[] storage wins = winners[msg.sender];
+        if (wins.length == 0) {
+            // TODO: Error handle
+        }
+
+        for (uint i = 0; i < wins.length; i++) {
+            Win storage win = wins[i];
+            if (win.betId == betId && !win.completed)  {
+                (bool sent, ) = msg.sender.call{value: wins[i].win}("");
+                if(sent) {
+                    win.completed = true;
+                }
+                else {
+                    // TODO: handle error
+                }
+
+                break;
+            }
+        }
     }
 }
