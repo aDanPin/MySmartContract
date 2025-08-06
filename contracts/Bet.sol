@@ -60,7 +60,7 @@ contract Bet {
     }
     
     modifier roundEnded(uint256 roundId) {
-        BetRound storage round = betRounds[roundId];
+        BetRound memory round = betRounds[roundId];
         require(round.betState == 2 ||
                 round.betState == 3 ||
                 round.betState == 4 ||
@@ -146,7 +146,7 @@ contract Bet {
     
     // Claim winnings for a specific round
     function claimXandCreator(uint256 roundId) internal roundExists(roundId) {
-        BetRound storage betRound = betRounds[roundId];
+        BetRound memory betRound = betRounds[roundId];
 
         uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
         require(betAmount > 0, "No bet placed on winning option");
@@ -159,7 +159,7 @@ contract Bet {
         // SCALE STARTS HERE
         uint256 betScale = (SCALE * winningPool) / betRound.totalXBetAmount;
 
-        address[] storage winnersPool = xParticipants[roundId];
+        address[] memory winnersPool = xParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
             uint256 win = xBets[roundId][winner] * betScale / SCALE;
@@ -183,7 +183,7 @@ contract Bet {
 
     // Claim winnings for a specific round
     function claimYandCreator(uint256 roundId) internal roundExists(roundId) {
-        BetRound storage betRound = betRounds[roundId];
+        BetRound memory betRound = betRounds[roundId];
 
         uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
         require(betAmount > 0, "No bet placed on winning option");
@@ -196,7 +196,7 @@ contract Bet {
         // SCALE STARTS HERE
         uint256 betScale = (SCALE * winningPool) / betRound.totalYBetAmount;
 
-        address[] storage winnersPool = yParticipants[roundId];
+        address[] memory winnersPool = yParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
             uint256 win = yBets[roundId][winner] * betScale / SCALE;
@@ -218,11 +218,67 @@ contract Bet {
         }
     }
 
+    // Claim winnings for both X and Y participants (for draw scenarios)
+    function claimXAndYAndCreator(uint256 roundId) internal roundExists(roundId) {
+        BetRound memory betRound = betRounds[roundId];
+
+        uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
+        require(betAmount > 0, "No bet placed on winning option");
+
+        // Calculate winnings based on total pool and creator fee
+        uint256 creatorFeeAmount = betAmount / betRound.creatorFee;
+        uint256 winningPool = betAmount - creatorFeeAmount;
+        uint256 sentAmount = 0;
+
+        // Handle X participants
+        if (betRound.totalXBetAmount > 0) {
+            uint256 xBetScale = SCALE * (betRound.totalXBetAmount - (creatorFeeAmount / 2)) / (betRound.totalXBetAmount);
+            address[] memory xWinnersPool = xParticipants[roundId];
+            for (uint i = 0; i < xWinnersPool.length; i++) {
+                address winner = xWinnersPool[i];
+                uint256 win = xBets[roundId][winner] * xBetScale / SCALE;
+                if (sentAmount + win < winningPool) {
+                    winners[winner].push(Win(roundId, win, false));
+                    sentAmount += win;
+                }
+                else {
+                    // todo:: Error handle
+                }
+            }
+        }
+
+        // Handle Y participants
+        if (betRound.totalYBetAmount > 0) {
+            uint256 yBetScale = SCALE * (betRound.totalYBetAmount - (creatorFeeAmount / 2)) / (betRound.totalYBetAmount);
+            address[] memory yWinnersPool = yParticipants[roundId];
+            for (uint i = 0; i < yWinnersPool.length; i++) {
+                address winner = yWinnersPool[i];
+                uint256 win = yBets[roundId][winner] * yBetScale / SCALE;
+                if (sentAmount + win < winningPool) {
+                    winners[winner].push(Win(roundId, win, false));
+                    sentAmount += win;
+                }
+                else {
+                    // todo:: Error handle
+                }
+            }
+        }
+
+        // Handle creator fee
+        creatorFeeAmount = betAmount - sentAmount;
+        if (creatorFeeAmount >= 0) {
+            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, false));
+        }
+        else {
+            // todo:: Error handle
+        }
+    }
+
     // Get bet round information
     function getBetRoundInfo(uint256 roundId) external view roundExists(roundId) returns (
         BetRound memory
     ) {
-        BetRound storage round = betRounds[roundId];
+        BetRound memory round = betRounds[roundId];
 
         return BetRound(
             round.description,
