@@ -130,23 +130,23 @@ contract Bet {
         round.betState = state;
         
         if(state == 2) { // cancel
-
+            claimXAndYAndCreator(roundId);
         }
         else if (state == 3) { // xWin
-
+            claimXAndCreator(roundId);
         }
         else if (state == 4) { // yWin
-            
+            claimYAndCreator(roundId);
         }
         else if (state == 5) { // draw
-            
+            claimXAndYAndCreator(roundId);
         }
 
         emit BetRoundEnded(roundId, round.description, state);
     }
     
     // Claim winnings for a specific round
-    function claimXandCreator(uint256 roundId) internal roundExists(roundId) {
+    function claimXAndCreator(uint256 roundId) internal roundExists(roundId) {
         BetRound memory betRound = betRounds[roundId];
 
         uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
@@ -183,7 +183,7 @@ contract Bet {
     }
 
     // Claim winnings for a specific round
-    function claimYandCreator(uint256 roundId) internal roundExists(roundId) {
+    function claimYAndCreator(uint256 roundId) internal roundExists(roundId) {
         BetRound memory betRound = betRounds[roundId];
 
         uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
