@@ -39,7 +39,7 @@ contract Bet {
 
     // Bet rounds tracking
     mapping(uint256 => BetRound) internal betRounds;
-    uint256 internal nextRoundId = 0;
+    uint256 internal nextRoundId;
     
     // Events
     event BetRoundCreated(uint256 indexed roundId, bytes32 indexed description);
@@ -56,7 +56,7 @@ contract Bet {
     }
     
     modifier roundActive(uint256 roundId) {
-        require(betRounds[roundId].betState != 0, "Betting period has ended"); // startTime is a time of creation BetRound so we need to check only endTime
+        require(betRounds[roundId].betState == 1 , "Round is not active."); // startTime is a time of creation BetRound so we need to check only endTime
         _;
     }
     
@@ -73,7 +73,7 @@ contract Bet {
         require(state == 2 ||
                 state == 3 ||
                 state == 4 ||
-                state == 5, "Bet is still active");
+                state == 5, "Not relevant incoming state.");
         _;
     }
 
@@ -86,13 +86,15 @@ contract Bet {
     function createBetRound(
         bytes32 description, uint creatorsFee
     ) external newIdAvailable returns (uint256 roundId) {
-        roundId = nextRoundId++;
+        roundId = nextRoundId;
+        nextRoundId += 1;
         
         BetRound storage newRound = betRounds[roundId];
         newRound.description = description;
         newRound.startTime = block.timestamp;
         newRound.betState = 1;
         newRound.creatorFee = creatorsFee;
+        newRound.creator = msg.sender;
 
         emit BetRoundCreated(roundId, description);
         
@@ -121,8 +123,8 @@ contract Bet {
     
     // Resolve a specific betting round
     function resolveBetRound(uint256 roundId, uint8 state)
-        external onlyCreator(roundId) 
-                 roundExists(roundId)
+        external roundExists(roundId)
+                 onlyCreator(roundId) 
                  roundActive(roundId)
                  finishingState(state) {
         BetRound storage round = betRounds[roundId];
@@ -295,7 +297,7 @@ contract Bet {
     
     // Get total number of rounds
     function getTotalRounds() external view returns (uint256) {
-        return nextRoundId - 1;
+        return nextRoundId;
     }
 
     // TODO: Think about more chip architecture
