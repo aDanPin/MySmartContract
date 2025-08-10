@@ -26,7 +26,9 @@ contract Bet {
     struct Win {
         uint256 betId;
         uint256 win;
-        bool completed;
+        bool completed; // if true, the win is claimed  
+                        // 1 - not claimed
+                        // 0 - claimed
     }
 
     mapping(uint256 => mapping(address => uint256)) internal xBets; // betId => Address => amount bet on X
@@ -79,6 +81,16 @@ contract Bet {
 
     modifier newIdAvailable() {
         require(nextRoundId <= type(uint256).max, "Maximum bet rounds number had reached");
+        _;
+    }
+
+    modifier winIsNotClaimed(uint256 betId) {
+        require(winners[msg.sender][betId].completed == false, "Win is already claimed or you are not a winner");
+        _;
+    }
+
+    modifier hasAnyWin() {
+        require(winners[msg.sender].length > 0, "Has no win");
         _;
     }
 
@@ -160,12 +172,12 @@ contract Bet {
         uint256 sentAmount = 0;
         
         // SCALE STARTS HERE
-        uint256 betScale = (SCALE * winningPool) / betRound.totalXBetAmount;
+        uint256 betScale = (winningPool) / betRound.totalXBetAmount;
 
         address[] memory winnersPool = xParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
-            uint256 win = xBets[roundId][winner] * betScale / SCALE;
+            uint256 win = xBets[roundId][winner] * betScale;
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
                 winners[winner].push(Win(roundId, win, false));
@@ -197,12 +209,12 @@ contract Bet {
         uint256 sentAmount = 0;
         
         // SCALE STARTS HERE
-        uint256 betScale = (SCALE * winningPool) / betRound.totalYBetAmount;
+        uint256 betScale = (winningPool) / betRound.totalYBetAmount;
 
         address[] memory winnersPool = yParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
-            uint256 win = yBets[roundId][winner] * betScale / SCALE;
+            uint256 win = yBets[roundId][winner] * betScale;
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
                 winners[winner].push(Win(roundId, win, false));
@@ -235,11 +247,11 @@ contract Bet {
 
         // Handle X participants
         if (betRound.totalXBetAmount > 0) {
-            uint256 xBetScale = SCALE * (betRound.totalXBetAmount - (creatorFeeAmount / 2)) / (betRound.totalXBetAmount);
+            uint256 xBetScale = (betRound.totalXBetAmount - (creatorFeeAmount / 2)) / (betRound.totalXBetAmount);
             address[] memory xWinnersPool = xParticipants[roundId];
             for (uint i = 0; i < xWinnersPool.length; i++) {
                 address winner = xWinnersPool[i];
-                uint256 win = xBets[roundId][winner] * xBetScale / SCALE;
+                uint256 win = xBets[roundId][winner] * xBetScale;
                 if (sentAmount + win < winningPool) {
                     winners[winner].push(Win(roundId, win, false));
                     sentAmount += win;
@@ -301,15 +313,15 @@ contract Bet {
     }
 
     // TODO: Think about more chip architecture
-    function claimWin(uint256 betId) external payable {
+    function claimWin(uint256 betId) external roundExists(betId)
+                                              roundEnded(betId)
+                                              hasAnyWin()
+                                              winIsNotClaimed(betId) payable {
         Win[] storage wins = winners[msg.sender];
-        if (wins.length == 0) {
-            // TODO: Error handle
-        }
 
         for (uint i = 0; i < wins.length; i++) {
             Win storage win = wins[i];
-            if (win.betId == betId && !win.completed)  {
+            if (win.betId == betId)  {
                 (bool sent, ) = msg.sender.call{value: wins[i].win}("");
                 if(sent) {
                     win.completed = true;

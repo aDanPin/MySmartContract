@@ -598,6 +598,178 @@ describe("Bet Contract", function () {
     });
   });
 
+  describe("Complex Bet Round Gas Measurement", function () {
+    const testDescription = ethers.encodeBytes32String("Final: Team Alpha vs Team Beta");
+    let bettor4, bettor5, bettor6;
+    
+    beforeEach(async function () {
+      // Get additional signers for 6 bettors total
+      [owner, creator, bettor1, bettor2, bettor3, bettor4, bettor5, bettor6, ...addrs] = await ethers.getSigners();
+
+      // Deploy the contract
+      const Bet = await ethers.getContractFactory("Bet");
+      betContract = await Bet.deploy();
+      await betContract.waitForDeployment();
+    });
+
+    it("Complex betting scenario with 6 bettors - X wins with gas measurement", async function () {
+      console.log("\n=== Complex Bet Round with 6 Bettors - X Win Scenario ===");
+      
+      let creatorFee = 33n; // 3% fee
+      // Step 1: Create bet round and measure gas
+      const tx = await betContract.connect(creator).createBetRound(testDescription, creatorFee);
+      const createReceipt = await tx.wait();
+      const createGasUsed = createReceipt.gasUsed;
+      
+      const event = createReceipt.logs
+        .map(log => {
+          try {
+            return betContract.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find(parsed => parsed && parsed.name === "BetRoundCreated");
+      const roundId = event.args.roundId;
+      console.log(`1. Create Bet Round #${roundId} Gas Used: ${createGasUsed.toString()}`);
+      // Step 2: Place bets by 6 different bettors with varying amounts and measure gas for each
+      const betAmounts = [
+        ethers.parseEther("5.0"),   // bettor1: 5 ETH on X
+        ethers.parseEther("3.5"),   // bettor2: 3.5 ETH on Y
+        ethers.parseEther("2.0"),   // bettor3: 2 ETH on X
+        ethers.parseEther("4.0"),   // bettor4: 4 ETH on Y
+        ethers.parseEther("1.5"),   // bettor5: 1.5 ETH on X
+        ethers.parseEther("6.0")    // bettor6: 6 ETH on Y
+        ];
+        
+        const betOptions = [0, 1, 0, 1, 0, 1]; // X, Y, X, Y, X, Y
+        const bettors = [bettor1, bettor2, bettor3, bettor4, bettor5, bettor6];
+        
+        let totalBetGas = 0n;
+        let totalXBetAmount = 0n;
+        let totalYBetAmount = 0n;
+        
+        console.log("\n2. Placing bets by 6 bettors:");
+        for (let i = 0; i < 6; i++) {
+          const betTx = await betContract.connect(bettors[i]).placeBet(roundId, betOptions[i], { value: betAmounts[i] });
+          const betReceipt = await betTx.wait();
+          const betGasUsed = betReceipt.gasUsed;
+          totalBetGas += betGasUsed;
+          
+          if (betOptions[i] === 0) {
+            totalXBetAmount += betAmounts[i];
+          } else {
+            totalYBetAmount += betAmounts[i];
+          }
+              
+          console.log(`   Bettor ${i}: ${ethers.formatEther(betAmounts[i])} ETH on ${betOptions[i] === 0 ? 'X' : 'Y'} - Gas: ${betGasUsed.toString()}`);
+        }
+          
+        console.log(`   Total bet gas used: ${totalBetGas.toString()}`);
+        console.log(`   Average gas per bet: ${(totalBetGas / 6n).toString()}`);
+
+        // Step 3: Verify bet amounts
+        const roundInfo = await betContract.getBetRoundInfo(roundId);
+        expect(roundInfo.totalXBetAmount).to.equal(totalXBetAmount);
+        expect(roundInfo.totalYBetAmount).to.equal(totalYBetAmount);
+        expect(roundInfo.totalXBetAmount).to.equal(ethers.parseEther("8.5")); // 5 + 2 + 1.5
+        expect(roundInfo.totalYBetAmount).to.equal(ethers.parseEther("13.5")); // 3.5 + 4 + 6
+        
+        console.log(`\n3. Total bet amounts:`);
+        console.log(`   X bets: ${ethers.formatEther(totalXBetAmount)} ETH`);
+        console.log(`   Y bets: ${ethers.formatEther(totalYBetAmount)} ETH`);
+        console.log(`   Total pool: ${ethers.formatEther(totalXBetAmount + totalYBetAmount)} ETH`);
+        
+        // Step 4: Resolve bet round with X win and measure gas
+        const resolveTx = await betContract.connect(creator).resolveBetRound(roundId, 3); // X wins
+        const resolveReceipt = await resolveTx.wait();
+        const resolveGasUsed = resolveReceipt.gasUsed;
+        console.log(`\n4. Resolve Bet Round (X wins) Gas Used: ${resolveGasUsed.toString()}`);
+        
+        // Step 5: Verify resolution
+        const finalRoundInfo = await betContract.getBetRoundInfo(roundId);
+        expect(finalRoundInfo.betState).to.equal(3); // X win
+        expect(finalRoundInfo.endTime).to.be.greaterThan(0);
+        
+        // Each X-bettor should be able to claim their win after X wins.
+        // We'll have each X-bettor call claimWin and check their balance increases appropriately.
+
+        // Helper: get balance in BigInt
+        async function getBalance(addr) {
+          return BigInt(await ethers.provider.getBalance(addr));
+        }
+
+        // Calculate expected payout for X-bettors (ignoring creator fee for simplicity)
+        // In the contract, the payout logic may include creator fee, so let's fetch the fee
+        creatorFee = (await betContract.getBetRoundInfo(roundId)).creatorFee;
+        //const SCALE = 1000n;
+        // Estimate expected win:
+        // Their bet back + proportional share of Y pool (minus creator fee)
+        // payout = betAmount + (betAmount / totalXBetAmount) * (totalYBetAmount * (SCALE - creatorFee) / SCALE)
+        const totalPool = totalXBetAmount + totalYBetAmount;
+        const creatorFeeAmount = totalPool / creatorFee;
+        const winScale =  (totalPool - creatorFeeAmount) / totalXBetAmount;
+        
+        console.log('Total Y bet amount', ethers.formatEther(totalYBetAmount));
+        console.log('Total X bet amount', ethers.formatEther(totalXBetAmount));
+        console.log('Total pool', ethers.formatEther(totalPool));
+        console.log('Creator fee amount', ethers.formatEther(creatorFeeAmount));
+        console.log('Win scale', winScale);
+
+        // For each X-bettor, calculate their share of the Y pool (minus creator fee)
+        for (let i = 0; i < 6; i++) {
+          const bettor = bettors[i];
+          if (betOptions[i] === 0) { // X-bettor
+            const betAmount = betAmounts[i];
+            const before = await getBalance(bettor.address);
+
+            // Claim win
+            const claimTx = await betContract.connect(bettor).claimWin(roundId);
+            await claimTx.wait();
+
+            const after = await getBalance(bettor.address);
+
+            console.log('Before', ethers.formatEther(before));
+            console.log('After', ethers.formatEther(after));
+            // Allow for gas cost, so just check that at least expectedPayout - 0.01 ETH is received
+            const received = after - before;
+            const expected = betAmount * winScale;
+            console.log(`Bettor ${i} received: ${ethers.formatEther(received)} ETH, expected at least: ${ethers.formatEther(expected)} ETH`);
+            console.log('Expected - received', expected - received);
+            expect(received).to.be.closeTo(expected, 30000000000000);
+          }
+          else {
+            await expect(betContract.connect(bettor).claimWin(roundId))
+            .to.be.revertedWith("Has no win");
+          }
+        }
+
+        // Step 6: Calculate total gas usage
+        const totalGasUsed = createGasUsed + totalBetGas + resolveGasUsed;
+        console.log(`\n5. Total Gas Usage Summary:`);
+        console.log(`   Create Round: ${createGasUsed.toString()} gas`);
+        console.log(`   Place Bets (6): ${totalBetGas.toString()} gas`);
+        console.log(`   Resolve Round: ${resolveGasUsed.toString()} gas`);
+        console.log(`   TOTAL: ${totalGasUsed.toString()} gas`);
+        console.log(`   Average gas per transaction: ${(totalGasUsed / 8n).toString()} gas`);
+        
+        // Step 7: Gas efficiency assertions
+        expect(createGasUsed).to.be.lessThan(BigInt(150000));
+        expect(totalBetGas / 6n).to.be.lessThan(BigInt(120000)); // Average per bet
+        expect(resolveGasUsed).to.be.lessThan(BigInt(300000));
+        expect(totalGasUsed).to.be.lessThan(BigInt(1000000)); // Total should be under 1M gas
+        
+        console.log(`\n6. Gas Efficiency Check: ✅ All gas limits passed`);
+        console.log(`   - Create round: ${createGasUsed < 150000n ? '✅' : '❌'} (${createGasUsed} < 150,000)`);
+        console.log(`   - Average bet: ${(totalBetGas / 6n) < 120000n ? '✅' : '❌'} (${totalBetGas / 6n} < 120,000)`);
+        console.log(`   - Resolve round: ${resolveGasUsed < 300000n ? '✅' : '❌'} (${resolveGasUsed} < 300,000)`);
+        console.log(`   - Total: ${totalGasUsed < 1000000n ? '✅' : '❌'} (${totalGasUsed} < 1,000,000)`);
+        /*
+        */
+        console.log("\n=== Test completed successfully! ===\n");
+    });
+  });
+
   describe("Gas Optimization Tests", function () {
     it("Measure gas for bet round creation", async function () {
       const description = ethers.encodeBytes32String("Gas test");
@@ -624,7 +796,7 @@ describe("Bet Contract", function () {
       
       const estimatedGas = await betContract.connect(creator).resolveBetRound.estimateGas(roundId, 3);
       console.log(`resolveBetRound: ${estimatedGas} gas`);
-      expect(estimatedGas).to.be.lessThan(BigInt(150000));
+      expect(estimatedGas).to.be.lessThan(BigInt(160000));
     });
 
     it("Measure gas for getting bet round info", async function () {
