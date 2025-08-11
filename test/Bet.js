@@ -712,19 +712,19 @@ describe("Bet Contract", function () {
         // Calculate expected payout for X-bettors (ignoring creator fee for simplicity)
         // In the contract, the payout logic may include creator fee, so let's fetch the fee
         creatorFee = (await betContract.getBetRoundInfo(roundId)).creatorFee;
-        //const SCALE = 1000n;
+        const SCALE = 1000n;
         // Estimate expected win:
         // Their bet back + proportional share of Y pool (minus creator fee)
         // payout = betAmount + (betAmount / totalXBetAmount) * (totalYBetAmount * (SCALE - creatorFee) / SCALE)
         const totalPool = totalXBetAmount + totalYBetAmount;
         const creatorFeeAmount = totalPool / creatorFee;
-        const winScale =  (totalPool - creatorFeeAmount) / totalXBetAmount;
+        const winScale =  (totalPool - creatorFeeAmount) * SCALE / totalXBetAmount;
         
         console.log('Total Y bet amount', ethers.formatEther(totalYBetAmount));
         console.log('Total X bet amount', ethers.formatEther(totalXBetAmount));
         console.log('Total pool', ethers.formatEther(totalPool));
         console.log('Creator fee amount', ethers.formatEther(creatorFeeAmount));
-        console.log('Win scale', winScale);
+        // console.log('Win scale', winScale);
 
         // For each X-bettor, calculate their share of the Y pool (minus creator fee)
         for (let winner of winners) {
@@ -739,12 +739,13 @@ describe("Bet Contract", function () {
 
             console.log('Before', ethers.formatEther(before));
             console.log('After', ethers.formatEther(after));
+            console.log('Bet amount', ethers.formatEther(betAmount));
             // Allow for gas cost, so just check that at least expectedPayout - 0.01 ETH is received
             const received = after - before;
-            const expected = betAmount * winScale;
+            const expected = betAmount * winScale / SCALE;
             console.log(`Winner ${winner.address} received: ${ethers.formatEther(received)} ETH, expected at least: ${ethers.formatEther(expected)} ETH`);
             console.log('Expected - received', expected - received);
-            expect(received).to.be.closeTo(expected, 30000000000000n);
+            expect(received).to.be.closeTo(expected, 15000000000000n);
         }
 
         // Step 6: Calculate total gas usage

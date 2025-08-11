@@ -172,12 +172,12 @@ contract Bet {
         uint256 sentAmount = 0;
         
         // SCALE STARTS HERE
-        uint256 betScale = (winningPool) / betRound.totalXBetAmount;
+        uint256 betScale = (winningPool * SCALE) / betRound.totalXBetAmount;
 
         address[] memory winnersPool = xParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
-            uint256 win = xBets[roundId][winner] * betScale;
+            uint256 win = xBets[roundId][winner] * betScale / SCALE;
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
                 winners[winner].push(Win(roundId, win, true));
