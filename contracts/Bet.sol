@@ -26,7 +26,7 @@ contract Bet {
     struct Win {
         uint256 betId;
         uint256 win;
-        bool completed; // if true, the win is claimed  
+        bool notClaimed; // if true, the win is claimed  
                         // 1 - not claimed
                         // 0 - claimed
     }
@@ -85,7 +85,7 @@ contract Bet {
     }
 
     modifier winIsNotClaimed(uint256 betId) {
-        require(winners[msg.sender][betId].completed == false, "Win is already claimed or you are not a winner");
+        require(winners[msg.sender][betId].notClaimed == true, "Win is already claimed or you are not a winner");
         _;
     }
 
@@ -180,7 +180,7 @@ contract Bet {
             uint256 win = xBets[roundId][winner] * betScale;
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
-                winners[winner].push(Win(roundId, win, false));
+                winners[winner].push(Win(roundId, win, true));
             }
             else {
                 // todo:: Error handle
@@ -189,7 +189,7 @@ contract Bet {
 
         creatorFeeAmount = betAmount - sentAmount;
         if (creatorFeeAmount >= 0) {
-            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, false));
+            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
         }
         else {
             // todo:: Error handle
@@ -217,7 +217,7 @@ contract Bet {
             uint256 win = yBets[roundId][winner] * betScale;
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
-                winners[winner].push(Win(roundId, win, false));
+                winners[winner].push(Win(roundId, win, true));
             }
             else {
                 // todo:: Error handle
@@ -226,7 +226,7 @@ contract Bet {
 
         creatorFeeAmount = betAmount - sentAmount;
         if (creatorFeeAmount >= 0) {
-            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, false));
+            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
         }
         else {
             // todo:: Error handle
@@ -253,7 +253,7 @@ contract Bet {
                 address winner = xWinnersPool[i];
                 uint256 win = xBets[roundId][winner] * xBetScale;
                 if (sentAmount + win < winningPool) {
-                    winners[winner].push(Win(roundId, win, false));
+                    winners[winner].push(Win(roundId, win, true));
                     sentAmount += win;
                 }
                 else {
@@ -264,13 +264,13 @@ contract Bet {
 
         // Handle Y participants
         if (betRound.totalYBetAmount > 0) {
-            uint256 yBetScale = SCALE * (betRound.totalYBetAmount - (creatorFeeAmount / 2)) / (betRound.totalYBetAmount);
+            uint256 yBetScale = (betRound.totalYBetAmount - (creatorFeeAmount / 2)) / (betRound.totalYBetAmount);
             address[] memory yWinnersPool = yParticipants[roundId];
             for (uint i = 0; i < yWinnersPool.length; i++) {
                 address winner = yWinnersPool[i];
-                uint256 win = yBets[roundId][winner] * yBetScale / SCALE;
+                uint256 win = yBets[roundId][winner] * yBetScale;
                 if (sentAmount + win < winningPool) {
-                    winners[winner].push(Win(roundId, win, false));
+                    winners[winner].push(Win(roundId, win, true));
                     sentAmount += win;
                 }
                 else {
@@ -282,7 +282,7 @@ contract Bet {
         // Handle creator fee
         creatorFeeAmount = betAmount - sentAmount;
         if (creatorFeeAmount >= 0) {
-            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, false));
+            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
         }
         else {
             // todo:: Error handle
@@ -324,7 +324,7 @@ contract Bet {
             if (win.betId == betId)  {
                 (bool sent, ) = msg.sender.call{value: wins[i].win}("");
                 if(sent) {
-                    win.completed = true;
+                    win.notClaimed = false;
                 }
                 else {
                     // TODO: handle error

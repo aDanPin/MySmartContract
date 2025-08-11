@@ -852,4 +852,255 @@ describe("Bet Contract", function () {
       ).to.be.revertedWith("Bet amount must be greater than 0");
     });
   });
+
+  describe("claimWin Modifier Tests", function () {
+    let roundId;
+    const testDescription = ethers.encodeBytes32String("Test bet round");
+    const creatorFee = 100; // 1% fee
+
+    beforeEach(async function () {
+      // Create a bet round and place some bets
+      await betContract.connect(creator).createBetRound(testDescription, creatorFee);
+      roundId = 0;
+      
+      // Place bets on both sides
+      await betContract.connect(bettor1).placeBet(roundId, 0, { value: ethers.parseEther("1.0") }); // X
+      await betContract.connect(bettor2).placeBet(roundId, 1, { value: ethers.parseEther("1.0") }); // Y
+      
+      // Resolve with X win to create wins for X bettors
+      await betContract.connect(creator).resolveBetRound(roundId, 3); // X wins
+    });
+
+    describe("roundExists modifier", function () {
+      it("Should revert when trying to claim win for non-existent round", async function () {
+        const nonExistentRoundId = 999;
+        
+        await expect(
+          betContract.connect(bettor1).claimWin(nonExistentRoundId)
+        ).to.be.revertedWith("Bet round does not exist");
+      });
+
+      it("Should allow claiming win for existing round", async function () {
+        // This should not revert due to roundExists modifier
+        // It might revert due to other modifiers, but not roundExists
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.not.be.revertedWith("Bet round does not exist");
+      });
+    });
+
+    describe("roundEnded modifier", function () {
+      it("Should revert when trying to claim win for active round", async function () {
+        // Create a new active round
+        await betContract.connect(bettor1).createBetRound(testDescription, creatorFee);
+        const activeRoundId = 1;
+        
+        // Place a bet
+        await betContract.connect(bettor2).placeBet(activeRoundId, 0, { value: ethers.parseEther("1.0") });
+        
+        // Try to claim win on active round (should revert)
+        await expect(
+          betContract.connect(bettor2).claimWin(activeRoundId)
+        ).to.be.revertedWith("Bet is still active");
+      });
+
+      it("Should allow claiming win for ended round (X win)", async function () {
+        // Round is already ended with X win in beforeEach
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.not.be.revertedWith("Bet is still active");
+      });
+
+      it("Should allow claiming win for ended round (Y win)", async function () {
+        // Create new round and end with Y win
+        await betContract.connect(bettor1).createBetRound(testDescription, creatorFee);
+        const yWinRoundId = 1;
+        
+        await betContract.connect(bettor2).placeBet(yWinRoundId, 1, { value: ethers.parseEther("1.0") }); // Y
+        await betContract.connect(bettor1).resolveBetRound(yWinRoundId, 4); // Y wins
+        
+        await expect(
+          betContract.connect(bettor2).claimWin(yWinRoundId)
+        ).to.not.be.revertedWith("Bet is still active");
+      });
+
+      it("Should allow claiming win for ended round (Draw)", async function () {
+        // Create new round and end with draw
+        await betContract.connect(bettor1).createBetRound(testDescription, creatorFee);
+        const drawRoundId = 1;
+        
+        await betContract.connect(bettor2).placeBet(drawRoundId, 0, { value: ethers.parseEther("1.0") }); // X
+        await betContract.connect(bettor3).placeBet(drawRoundId, 1, { value: ethers.parseEther("1.0") }); // Y
+        await betContract.connect(bettor1).resolveBetRound(drawRoundId, 5); // Draw
+        
+        await expect(
+          betContract.connect(bettor2).claimWin(drawRoundId)
+        ).to.not.be.revertedWith("Bet is still active");
+      });
+
+      it("Should allow claiming win for ended round (Cancelled)", async function () {
+        // Create new round and cancel it
+        await betContract.connect(bettor1).createBetRound(testDescription, creatorFee);
+        const cancelledRoundId = 1;
+        
+        await betContract.connect(bettor2).placeBet(cancelledRoundId, 0, { value: ethers.parseEther("1.0") }); // X
+        await betContract.connect(bettor1).resolveBetRound(cancelledRoundId, 2); // Cancelled
+        
+        await expect(
+          betContract.connect(bettor2).claimWin(cancelledRoundId)
+        ).to.not.be.revertedWith("Bet is still active");
+      });
+    });
+
+    describe("hasAnyWin modifier", function () {
+      it("Should revert when caller has no wins", async function () {
+        // bettor3 has not placed any bets, so they have no wins
+        await expect(
+          betContract.connect(bettor3).claimWin(roundId)
+        ).to.be.revertedWith("Has no win");
+      });
+
+      it("Should allow claiming when caller has wins", async function () {
+        // bettor1 bet on X and X won, so they should have a win
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.not.be.revertedWith("Has no win");
+      });
+
+      it("Should revert for non-participant even if round exists and ended", async function () {
+        // bettor3 never participated in any rounds
+        await expect(
+          betContract.connect(bettor3).claimWin(roundId)
+        ).to.be.revertedWith("Has no win");
+      });
+    });
+
+    describe("winIsNotClaimed modifier", function () {
+      it("Should allow claiming win for the first time", async function () {
+        // bettor1 should be able to claim their win
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.not.be.revertedWith("Win is already claimed or you are not a winner");
+      });
+
+      it("Should revert when trying to claim the same win twice", async function () {
+        // First claim should succeed
+        await betContract.connect(bettor1).claimWin(roundId);
+        
+        // Second claim should fail
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.be.revertedWith("Win is already claimed or you are not a winner");
+      });
+
+      it("Should allow claiming different wins for the same user", async function () {
+        // Create another round where bettor1 wins
+        await betContract.connect(bettor2).createBetRound(testDescription, creatorFee);
+        const roundId2 = 1;
+        
+        await betContract.connect(bettor1).placeBet(roundId2, 0, { value: ethers.parseEther("1.0") }); // X
+        await betContract.connect(bettor3).placeBet(roundId2, 1, { value: ethers.parseEther("1.0") }); // Y
+        await betContract.connect(bettor2).resolveBetRound(roundId2, 3); // X wins
+        
+        // Should be able to claim both wins
+        await expect(betContract.connect(bettor1).claimWin(roundId)).to.not.be.reverted;
+        await expect(betContract.connect(bettor1).claimWin(roundId2)).to.not.be.reverted;
+      });
+
+      it("Should revert when trying to claim already claimed win", async function () {
+        // Claim the win
+        await betContract.connect(bettor1).claimWin(roundId);
+        
+        // Try to claim again
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.be.revertedWith("Win is already claimed or you are not a winner");
+      });
+    });
+
+    describe("Combined modifier scenarios", function () {
+      it("Should handle all modifiers correctly for valid claim", async function () {
+        // This should pass all modifiers:
+        // - roundExists: roundId 0 exists
+        // - roundEnded: round ended with X win
+        // - hasAnyWin: bettor1 bet on X and X won
+        // - winIsNotClaimed: bettor1 hasn't claimed yet
+        await expect(
+          betContract.connect(bettor1).claimWin(roundId)
+        ).to.not.be.reverted;
+      });
+
+      it("Should fail multiple modifier checks", async function () {
+        // bettor3 fails multiple checks:
+        // - hasAnyWin: they have no wins
+        // - winIsNotClaimed: they have no wins to claim
+        await expect(
+          betContract.connect(bettor3).claimWin(roundId)
+        ).to.be.revertedWith("Has no win");
+      });
+
+      it("Should fail roundExists but pass other checks", async function () {
+        // Create a scenario where bettor1 has wins but tries to claim non-existent round
+        const nonExistentRoundId = 999;
+        
+        await expect(
+          betContract.connect(bettor1).claimWin(nonExistentRoundId)
+        ).to.be.revertedWith("Bet round does not exist");
+      });
+
+      it("Should fail roundEnded but pass other checks", async function () {
+        // Create an active round
+        await betContract.connect(bettor1).createBetRound(testDescription, creatorFee);
+        const activeRoundId = 1;
+        
+        // Place a bet but don't resolve
+        await betContract.connect(bettor2).placeBet(activeRoundId, 0, { value: ethers.parseEther("1.0") });
+        
+        await expect(
+          betContract.connect(bettor2).claimWin(activeRoundId)
+        ).to.be.revertedWith("Bet is still active");
+      });
+    });
+
+    describe("Edge cases for claimWin modifiers", function () {
+      it("Should handle user who bet on losing side", async function () {
+        // bettor2 bet on Y but X won, so they should have no wins
+        await expect(
+          betContract.connect(bettor2).claimWin(roundId)
+        ).to.be.revertedWith("Has no win");
+      });
+
+      it("Should handle user who bet on both sides in draw scenario", async function () {
+        // Create a draw scenario
+        await betContract.connect(bettor1).createBetRound(testDescription, creatorFee);
+        const drawRoundId = 1;
+        
+        // bettor1 bets on both sides
+        await betContract.connect(bettor1).placeBet(drawRoundId, 0, { value: ethers.parseEther("1.0") }); // X
+        await betContract.connect(bettor1).placeBet(drawRoundId, 1, { value: ethers.parseEther("1.0") }); // Y
+        await betContract.connect(bettor1).resolveBetRound(drawRoundId, 5); // Draw
+        
+        // Should be able to claim win
+        await expect(
+          betContract.connect(bettor1).claimWin(drawRoundId)
+        ).to.not.be.reverted;
+      });
+
+      it("Should handle maximum round ID", async function () {
+        // Try to claim with maximum uint256 value
+        const maxRoundId = ethers.MaxUint256;
+        
+        await expect(
+          betContract.connect(bettor1).claimWin(maxRoundId)
+        ).to.be.revertedWith("Bet round does not exist");
+      });
+
+      it("Should handle zero round ID", async function () {
+        // Round ID 0 exists in our test, so this should work
+        await expect(
+          betContract.connect(bettor1).claimWin(0)
+        ).to.not.be.revertedWith("Bet round does not exist");
+      });
+    });
+  });
 });
