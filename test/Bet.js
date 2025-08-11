@@ -737,16 +737,35 @@ describe("Bet Contract", function () {
 
             const after = await getBalance(winner.address);
 
+            console.log('\n');
             console.log('Before', ethers.formatEther(before));
             console.log('After', ethers.formatEther(after));
             console.log('Bet amount', ethers.formatEther(betAmount));
             // Allow for gas cost, so just check that at least expectedPayout - 0.01 ETH is received
             const received = after - before;
             const expected = betAmount * winScale / SCALE;
-            console.log(`Winner ${winner.address} received: ${ethers.formatEther(received)} ETH, expected at least: ${ethers.formatEther(expected)} ETH`);
-            console.log('Expected - received', expected - received);
+            console.log(`Winner ${winner.address} received: ${ethers.formatEther(received)} ETH, expected close to: ${ethers.formatEther(expected)} ETH`);
             expect(received).to.be.closeTo(expected, 15000000000000n);
         }
+        // Now, check that the creator can claim their fee after X wins.
+        // Get creator's balance before claim
+        const creatorBefore = await getBalance(creator.address);
+
+        // Creator claims win
+        const creatorClaimTx = await betContract.connect(creator).claimWin(roundId);
+        await creatorClaimTx.wait();
+
+        // Get creator's balance after claim
+        const creatorAfter = await getBalance(creator.address);
+
+        // The creator should receive the creator fee (minus gas)
+        const creatorReceived = creatorAfter - creatorBefore;
+        console.log('\n');
+        console.log('Creator before', ethers.formatEther(creatorBefore));
+        console.log('Creator after', ethers.formatEther(creatorAfter));
+        console.log(`Creator received: ${ethers.formatEther(creatorReceived)} ETH, expected at least: ${ethers.formatEther(creatorFeeAmount)} ETH`);
+        // Allow for gas cost, so just check that at least expectedCreatorFee - 0.01 ETH is received
+        expect(creatorReceived).to.be.greaterThan(creatorFeeAmount);
 
         // Step 6: Calculate total gas usage
         const totalGasUsed = createGasUsed + totalBetGas + resolveGasUsed;

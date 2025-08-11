@@ -181,6 +181,7 @@ contract Bet {
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
                 winners[winner].push(Win(roundId, win, true));
+                sentAmount += win;
             }
             else {
                 // todo:: Error handle
@@ -218,6 +219,7 @@ contract Bet {
             // SCALE ENDS HERE
             if (sentAmount + win < winningPool) {
                 winners[winner].push(Win(roundId, win, true));
+                sentAmount += win;
             }
             else {
                 // todo:: Error handle
