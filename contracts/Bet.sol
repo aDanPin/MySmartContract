@@ -27,8 +27,6 @@ contract Bet {
         uint256 betId;
         uint256 win;
         bool notClaimed; // if true, the win is claimed  
-                        // 1 - not claimed
-                        // 0 - claimed
     }
 
     mapping(uint256 => mapping(address => uint256)) internal xBets; // betId => Address => amount bet on X
@@ -86,10 +84,6 @@ contract Bet {
         _;
     }
 
-    modifier winIsNotClaimed(uint256 betId) {
-        require(winners[msg.sender][betId].notClaimed == true, "Win is already claimed or you are not a winner");
-        _;
-    }
 
     modifier hasNoBetOnThisRound(uint256 roundId) {
         require(xBets[roundId][msg.sender] == 0 && yBets[roundId][msg.sender] == 0, "Has bet on this round");
@@ -219,12 +213,12 @@ contract Bet {
         uint256 sentAmount = 0;
         
         // SCALE STARTS HERE
-        uint256 betScale = (winningPool) / betRound.totalYBetAmount;
+        uint256 betScale = (winningPool * SCALE) / betRound.totalYBetAmount;
 
         address[] memory winnersPool = yParticipants[roundId];
         for (uint i = 0; i < winnersPool.length; i++) {
             address winner = winnersPool[i];
-            uint256 win = yBets[roundId][winner] * betScale;
+            uint256 win = yBets[roundId][winner] * betScale / SCALE;
             // SCALE ENDS HERE
             if (sentAmount + win <= winningPool) {
                 winners[winner].push(Win(roundId, win, true));
@@ -327,9 +321,8 @@ contract Bet {
     function claimWin(uint256 betId) external roundExists(betId)
                                               roundEnded(betId)
                                               hasAnyWin()
-                                              winIsNotClaimed(betId) payable {
+                                               payable {
         Win[] storage wins = winners[msg.sender];
-
         for (uint i = 0; i < wins.length; i++) {
             Win storage win = wins[i];
             if (win.betId == betId)  {
@@ -341,6 +334,10 @@ contract Bet {
                     revert("Win has not been sent");
                 }
                 break;
+            }
+
+            if(i == wins.length - 1) {
+                revert("Win is not found");
             }
         }
     }
