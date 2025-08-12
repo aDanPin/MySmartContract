@@ -47,7 +47,7 @@ contract Bet {
     event BetRoundCreated(uint256 indexed roundId, bytes32 indexed description);
     event BetRoundEnded(uint256 indexed roundId, bytes32 indexed description, uint8 indexed betState);
     
-    error MyError(uint256 errorCode, uint256 errorData);
+    error WinIsOutOfPool(address winner, address creator, uint256 betId, uint256 win);
 
     modifier onlyCreator(uint256 roundId) {
         require(betRounds[roundId].creator == msg.sender, "Only creator can call this function");
@@ -193,7 +193,7 @@ contract Bet {
                 sentAmount += win;
             }
             else {
-                revert MyError(winnersPool.length, sentAmount + win - winningPool);
+                revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
             }
         }
 
@@ -202,7 +202,7 @@ contract Bet {
             winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
         }
         else {
-            // todo:: Error handle
+            revert WinIsOutOfPool(betRound.creator, betRound.creator, roundId, creatorFeeAmount);
         }
     }
 
@@ -231,7 +231,7 @@ contract Bet {
                 sentAmount += win;
             }
             else {
-                // todo:: Error handle
+                revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
             }
         }
 
@@ -240,7 +240,7 @@ contract Bet {
             winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
         }
         else {
-            // todo:: Error handle
+            revert WinIsOutOfPool(betRound.creator, betRound.creator, roundId, creatorFeeAmount);
         }
     }
 
@@ -268,7 +268,7 @@ contract Bet {
                     sentAmount += win;
                 }
                 else {
-                    // todo:: Error handle
+                    revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
                 }
             }
         }
@@ -285,7 +285,7 @@ contract Bet {
                     sentAmount += win;
                 }
                 else {
-                    // todo:: Error handle
+                    revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
                 }
             }
         }
@@ -296,7 +296,7 @@ contract Bet {
             winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
         }
         else {
-            // todo:: Error handle
+            revert WinIsOutOfPool(betRound.creator, betRound.creator, roundId, creatorFeeAmount);
         }
     }
 
@@ -338,9 +338,8 @@ contract Bet {
                     win.notClaimed = false;
                 }
                 else {
-                    // TODO: handle error
+                    revert("Win has not been sent");
                 }
-
                 break;
             }
         }
