@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 contract Bet {    
-    uint256 public SCALE = 1000;
+    uint256 public SCALE = 10000;
   
     // Bet round structure
     struct BetRound {
@@ -47,6 +47,8 @@ contract Bet {
     event BetRoundCreated(uint256 indexed roundId, bytes32 indexed description);
     event BetRoundEnded(uint256 indexed roundId, bytes32 indexed description, uint8 indexed betState);
     
+    error MyError(uint256 errorCode, uint256 errorData);
+
     modifier onlyCreator(uint256 roundId) {
         require(betRounds[roundId].creator == msg.sender, "Only creator can call this function");
         _;
@@ -89,6 +91,11 @@ contract Bet {
         _;
     }
 
+    modifier hasNoBetOnThisRound(uint256 roundId) {
+        require(xBets[roundId][msg.sender] == 0 && yBets[roundId][msg.sender] == 0, "Has bet on this round");
+        _;
+    }
+
     modifier hasAnyWin() {
         require(winners[msg.sender].length > 0, "Has no win");
         _;
@@ -115,7 +122,9 @@ contract Bet {
     
     // Place a bet on a specific round
     // xOrY : 0 = x, 1 = y
-    function placeBet(uint256 roundId, uint8 xOrY) external payable roundExists(roundId) roundActive(roundId) {
+    function placeBet(uint256 roundId, uint8 xOrY) external payable roundExists(roundId)
+                                                                    roundActive(roundId)
+                                                                    hasNoBetOnThisRound(roundId) {
         require(msg.value > 0, "Bet amount must be greater than 0");
         
         BetRound storage round = betRounds[roundId];
@@ -179,12 +188,12 @@ contract Bet {
             address winner = winnersPool[i];
             uint256 win = xBets[roundId][winner] * betScale / SCALE;
             // SCALE ENDS HERE
-            if (sentAmount + win < winningPool) {
+            if (sentAmount + win <= winningPool) {
                 winners[winner].push(Win(roundId, win, true));
                 sentAmount += win;
             }
             else {
-                // todo:: Error handle
+                revert MyError(winnersPool.length, sentAmount + win - winningPool);
             }
         }
 
@@ -217,7 +226,7 @@ contract Bet {
             address winner = winnersPool[i];
             uint256 win = yBets[roundId][winner] * betScale;
             // SCALE ENDS HERE
-            if (sentAmount + win < winningPool) {
+            if (sentAmount + win <= winningPool) {
                 winners[winner].push(Win(roundId, win, true));
                 sentAmount += win;
             }
@@ -254,7 +263,7 @@ contract Bet {
             for (uint i = 0; i < xWinnersPool.length; i++) {
                 address winner = xWinnersPool[i];
                 uint256 win = xBets[roundId][winner] * xBetScale;
-                if (sentAmount + win < winningPool) {
+                if (sentAmount + win <= winningPool) {
                     winners[winner].push(Win(roundId, win, true));
                     sentAmount += win;
                 }
@@ -271,7 +280,7 @@ contract Bet {
             for (uint i = 0; i < yWinnersPool.length; i++) {
                 address winner = yWinnersPool[i];
                 uint256 win = yBets[roundId][winner] * yBetScale;
-                if (sentAmount + win < winningPool) {
+                if (sentAmount + win <= winningPool) {
                     winners[winner].push(Win(roundId, win, true));
                     sentAmount += win;
                 }
