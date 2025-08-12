@@ -687,7 +687,7 @@ describe("Bet Contract", function () {
         // Second claim should fail
         await expect(
           betContract.connect(bettor1).claimWin(roundId)
-        ).to.be.revertedWith("Win is already claimed or you are not a winner");
+        ).to.be.revertedWith("Win is already claimed");
       });
 
       it("Should allow claiming different wins for the same user", async function () {
@@ -711,7 +711,7 @@ describe("Bet Contract", function () {
         // Try to claim again
         await expect(
           betContract.connect(bettor1).claimWin(roundId)
-        ).to.be.revertedWith("Win is already claimed or you are not a winner");
+        ).to.be.revertedWith("Win is already claimed");
       });
     });
 

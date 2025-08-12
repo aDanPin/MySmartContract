@@ -325,7 +325,7 @@ contract Bet {
         Win[] storage wins = winners[msg.sender];
         for (uint i = 0; i < wins.length; i++) {
             Win storage win = wins[i];
-            if (win.betId == betId)  {
+            if (win.betId == betId && win.notClaimed == true)  {
                 (bool sent, ) = msg.sender.call{value: wins[i].win}("");
                 if(sent) {
                     win.notClaimed = false;
@@ -334,6 +334,9 @@ contract Bet {
                     revert("Win has not been sent");
                 }
                 break;
+            }
+            else if (win.betId == betId && win.notClaimed == false) {
+                revert("Win is already claimed");
             }
 
             if(i == wins.length - 1) {
