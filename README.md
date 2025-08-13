@@ -17,6 +17,5 @@ npx hardhat test
 
 ## Development
 
-- Built with Hardhat
-- Uses OpenZeppelin contracts
+- Built with Node.js and Hardhat
 - Comprehensive test coverage
