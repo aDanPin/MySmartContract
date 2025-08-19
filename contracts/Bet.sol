@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import { UD60x18, convert, div, sub, ud } from "@prb/math/src/UD60x18.sol";
+
 contract Bet {    
     uint256 public SCALE = 10000;
   
@@ -23,19 +26,17 @@ contract Bet {
         // 5 - draw
     }
 
-    struct Win {
-        uint256 betId;
-        uint256 win;
-        bool notClaimed; // if true, the win is claimed  
-    }
-
     mapping(uint256 => mapping(address => uint256)) internal xBets; // betId => Address => amount bet on X
     mapping(uint256 => mapping(address => uint256)) internal yBets; // betId => Address => amount bet on Y
     mapping(uint256 => address[]) internal xParticipants; // betId => Address
     mapping(uint256 => address[]) internal yParticipants; // betId => Address
     
-    // TODO: Think about more chip architecture
-    mapping(address => Win[]) winners;
+    // Merkle tree root for each round's winners
+    mapping(uint256 => bytes32) internal merkleRoots;
+    
+    // Track claimed wins to prevent double claiming
+    mapping(uint256 => mapping(address => bool)) internal claimedWins;
+    mapping(uint256 => bool) internal claimedFees;
 
     // Bet rounds tracking
     mapping(uint256 => BetRound) internal betRounds;
@@ -44,8 +45,16 @@ contract Bet {
     // Events
     event BetRoundCreated(uint256 indexed roundId, bytes32 indexed description);
     event BetRoundEnded(uint256 indexed roundId, bytes32 indexed description, uint8 indexed betState);
+    event MerkleRootSet(uint256 indexed roundId, bytes32 indexed merkleRoot);
+    event Betplaced(uint256 indexed roundId, uint8 xOrY, address indexed bettor, uint256 amount);
+    event WinClaimed(uint256 indexed roundId, address indexed winner, uint256 amount);
+    event FeeClaimed(uint256 indexed roundId, address indexed creator, uint256 amount);
     
     error WinIsOutOfPool(address winner, address creator, uint256 betId, uint256 win);
+    error InvalidMerkleProof();
+    error WinAlreadyClaimed();
+    error WinNotFound();
+    error FeeAlreadyClaimed();
 
     modifier onlyCreator(uint256 roundId) {
         require(betRounds[roundId].creator == msg.sender, "Only creator can call this function");
@@ -84,14 +93,37 @@ contract Bet {
         _;
     }
 
-
     modifier hasNoBetOnThisRound(uint256 roundId) {
         require(xBets[roundId][msg.sender] == 0 && yBets[roundId][msg.sender] == 0, "Has bet on this round");
         _;
     }
 
-    modifier hasAnyWin() {
-        require(winners[msg.sender].length > 0, "Has no win");
+    modifier proofIsCorrect(uint256 roundId, uint256 sentAmount, bytes32[] calldata proof) {
+        bytes32 merkleRoot = merkleRoots[roundId];
+        if (merkleRoot == bytes32(0)) {
+            revert WinNotFound();
+        }
+        // Create the leaf hash
+        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, sentAmount));
+
+        // Verify the Merkle proof
+        if (!MerkleProof.verify(proof, merkleRoot, leaf)) {
+            revert InvalidMerkleProof();
+        }
+        _;
+    }
+    modifier winHasNotBeenClaimed(uint256 roundId, address winner) {
+        // Check if already claimed
+        if (claimedWins[roundId][msg.sender]) {
+            revert WinAlreadyClaimed();
+        }
+        _;
+    }
+
+    modifier feeHasNotBeenClaimed(uint256 roundId) {
+        if (claimedFees[roundId]) {
+            revert FeeAlreadyClaimed();
+        }
         _;
     }
 
@@ -133,11 +165,11 @@ contract Bet {
             yParticipants[roundId].push(msg.sender);
         }
         
-        // todo: emit BetPlaced(roundId, msg.sender, option, msg.value);
+        emit Betplaced(roundId, xOrY, msg.sender, msg.value);
     }
     
     // Resolve a specific betting round
-    function resolveBetRound(uint256 roundId, uint8 state)
+    function resolveBetRound(uint256 roundId, uint8 state, bytes32 merkleRoot)
         external roundExists(roundId)
                  onlyCreator(roundId) 
                  roundActive(roundId)
@@ -146,152 +178,9 @@ contract Bet {
         round.endTime = block.timestamp;
         round.betState = state;
         
-        if(state == 2) { // cancel
-            claimXAndYAndCreator(roundId);
-        }
-        else if (state == 3) { // xWin
-            claimXAndCreator(roundId);
-        }
-        else if (state == 4) { // yWin
-            claimYAndCreator(roundId);
-        }
-        else if (state == 5) { // draw
-            claimXAndYAndCreator(roundId);
-        }
+        merkleRoots[roundId] = merkleRoot;
 
         emit BetRoundEnded(roundId, round.description, state);
-    }
-    
-    // Claim winnings for a specific round
-    function claimXAndCreator(uint256 roundId) internal roundExists(roundId) {
-        BetRound memory betRound = betRounds[roundId];
-
-        uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
-        require(betAmount > 0, "No bet placed on winning option");
-
-        // Calculate winnings based on total pool and creator fee
-        uint256 creatorFeeAmount = betAmount / betRound.creatorFee;
-        uint256 winningPool = betAmount - creatorFeeAmount;
-        uint256 sentAmount = 0;
-        
-        // SCALE STARTS HERE
-        uint256 betScale = (winningPool * SCALE) / betRound.totalXBetAmount;
-
-        address[] memory winnersPool = xParticipants[roundId];
-        for (uint i = 0; i < winnersPool.length; i++) {
-            address winner = winnersPool[i];
-            uint256 win = xBets[roundId][winner] * betScale / SCALE;
-            // SCALE ENDS HERE
-            if (sentAmount + win <= winningPool) {
-                winners[winner].push(Win(roundId, win, true));
-                sentAmount += win;
-            }
-            else {
-                revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
-            }
-        }
-
-        creatorFeeAmount = betAmount - sentAmount;
-        if (creatorFeeAmount >= 0) {
-            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
-        }
-        else {
-            revert WinIsOutOfPool(betRound.creator, betRound.creator, roundId, creatorFeeAmount);
-        }
-    }
-
-    // Claim winnings for a specific round
-    function claimYAndCreator(uint256 roundId) internal roundExists(roundId) {
-        BetRound memory betRound = betRounds[roundId];
-
-        uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
-        require(betAmount > 0, "No bet placed on winning option");
-
-        // Calculate winnings based on total pool and creator fee
-        uint256 creatorFeeAmount = betAmount / betRound.creatorFee;
-        uint256 winningPool = betAmount - creatorFeeAmount;
-        uint256 sentAmount = 0;
-        
-        // SCALE STARTS HERE
-        uint256 betScale = (winningPool * SCALE) / betRound.totalYBetAmount;
-
-        address[] memory winnersPool = yParticipants[roundId];
-        for (uint i = 0; i < winnersPool.length; i++) {
-            address winner = winnersPool[i];
-            uint256 win = yBets[roundId][winner] * betScale / SCALE;
-            // SCALE ENDS HERE
-            if (sentAmount + win <= winningPool) {
-                winners[winner].push(Win(roundId, win, true));
-                sentAmount += win;
-            }
-            else {
-                revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
-            }
-        }
-
-        creatorFeeAmount = betAmount - sentAmount;
-        if (creatorFeeAmount >= 0) {
-            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
-        }
-        else {
-            revert WinIsOutOfPool(betRound.creator, betRound.creator, roundId, creatorFeeAmount);
-        }
-    }
-
-    // Claim winnings for both X and Y participants (for draw scenarios)
-    function claimXAndYAndCreator(uint256 roundId) internal roundExists(roundId) {
-        BetRound memory betRound = betRounds[roundId];
-
-        uint256 betAmount = betRound.totalXBetAmount + betRound.totalYBetAmount;
-        require(betAmount > 0, "No bet placed on winning option");
-
-        // Calculate winnings based on total pool and creator fee
-        uint256 creatorFeeAmount = betAmount / betRound.creatorFee;
-        uint256 winningPool = betAmount - creatorFeeAmount;
-        uint256 sentAmount = 0;
-
-        // Handle X participants
-        if (betRound.totalXBetAmount > 0) {
-            uint256 xBetScale = (betRound.totalXBetAmount - (creatorFeeAmount / 2)) / (betRound.totalXBetAmount);
-            address[] memory xWinnersPool = xParticipants[roundId];
-            for (uint i = 0; i < xWinnersPool.length; i++) {
-                address winner = xWinnersPool[i];
-                uint256 win = xBets[roundId][winner] * xBetScale;
-                if (sentAmount + win <= winningPool) {
-                    winners[winner].push(Win(roundId, win, true));
-                    sentAmount += win;
-                }
-                else {
-                    revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
-                }
-            }
-        }
-
-        // Handle Y participants
-        if (betRound.totalYBetAmount > 0) {
-            uint256 yBetScale = (betRound.totalYBetAmount - (creatorFeeAmount / 2)) / (betRound.totalYBetAmount);
-            address[] memory yWinnersPool = yParticipants[roundId];
-            for (uint i = 0; i < yWinnersPool.length; i++) {
-                address winner = yWinnersPool[i];
-                uint256 win = yBets[roundId][winner] * yBetScale;
-                if (sentAmount + win <= winningPool) {
-                    winners[winner].push(Win(roundId, win, true));
-                    sentAmount += win;
-                }
-                else {
-                    revert WinIsOutOfPool(winner, betRound.creator, roundId, win);
-                }
-            }
-        }
-
-        // Handle creator fee
-        creatorFeeAmount = betAmount - sentAmount;
-        if (creatorFeeAmount >= 0) {
-            winners[betRound.creator].push(Win(roundId, creatorFeeAmount, true));
-        }
-        else {
-            revert WinIsOutOfPool(betRound.creator, betRound.creator, roundId, creatorFeeAmount);
-        }
     }
 
     // Get bet round information
@@ -317,31 +206,67 @@ contract Bet {
         return nextRoundId;
     }
 
-    // TODO: Think about more chip architecture
-    function claimWin(uint256 betId) external roundExists(betId)
-                                              roundEnded(betId)
-                                              hasAnyWin()
-                                               payable {
-        Win[] storage wins = winners[msg.sender];
-        for (uint i = 0; i < wins.length; i++) {
-            Win storage win = wins[i];
-            if (win.betId == betId && win.notClaimed == true)  {
-                (bool sent, ) = msg.sender.call{value: wins[i].win}("");
-                if(sent) {
-                    win.notClaimed = false;
-                }
-                else {
-                    revert("Win has not been sent");
-                }
-                break;
-            }
-            else if (win.betId == betId && win.notClaimed == false) {
-                revert("Win is already claimed");
-            }
-
-            if(i == wins.length - 1) {
-                revert("Win is not found");
-            }
-        }
+    // Get Merkle root for a round
+    function getMerkleRoot(uint256 roundId) external view roundExists(roundId) returns (bytes32) {
+        return merkleRoots[roundId];
     }
+
+    // Check if a win has been claimed
+    function hasClaimedWin(uint256 roundId, address winner) external view roundExists(roundId) returns (bool) {
+        return claimedWins[roundId][winner];
+    }
+
+    // Claim win using Merkle proof
+    function claimWin(uint256 roundId, uint256 sentAmount, bytes32[] calldata proof) 
+        external roundExists(roundId) 
+                 roundEnded(roundId)
+                 proofIsCorrect(roundId, sentAmount, proof)
+                 winHasNotBeenClaimed(roundId, msg.sender) {
+        // Validate that the win amount doesn't exceed the available pool
+        BetRound memory round = betRounds[roundId];
+        
+        // Use PRBMath for precise fee calculation
+        UD60x18 totalPoolUD = ud(round.totalXBetAmount + round.totalYBetAmount);
+        UD60x18 totalXBetAmountUD = ud(round.totalXBetAmount);
+        UD60x18 creatorFeeUD = convert(round.creatorFee);
+        UD60x18 creatorFeeAmountUD = totalPoolUD.div(creatorFeeUD);
+        UD60x18 sentAmountUD = ud(sentAmount);
+        // Calculate creator fee amount using PRBMath
+        uint256 calculatedWinAmount = (sentAmountUD.mul(totalPoolUD.sub(creatorFeeAmountUD).div(totalXBetAmountUD))).unwrap();
+        
+        // Transfer the win amount
+        (bool sent, ) = msg.sender.call{value: calculatedWinAmount}("");
+        if (!sent) {
+            revert("Win has not been sent");
+        }
+        // Mark as claimed
+        claimedWins[roundId][msg.sender] = true;
+
+        emit WinClaimed(roundId, msg.sender, calculatedWinAmount);
+    }
+/*
+    // Claim win using Merkle proof
+    function claimFee(uint256 roundId) 
+        external roundExists(roundId) 
+                 roundEnded(roundId)
+                 onlyCreator(roundId)
+                 feeHasNotBeenClaimed(roundId) {
+        // Validate that the win amount doesn't exceed the available pool
+        BetRound memory round = betRounds[roundId];
+        
+        // Use PRBMath for precise fee calculation
+        UD60x18 totalPoolUD = convert(round.totalXBetAmount + round.totalYBetAmount);
+        UD60x18 creatorFeeUD = convert(round.creatorFee);
+        UD60x18 creatorFeeAmount = totalPoolUD.div(creatorFeeUD);
+        // Transfer the win amount
+        (bool sent, ) = msg.sender.call{value: convert(creatorFeeAmount)}("");
+        if (!sent) {
+            revert("Win has not been sent");
+        }
+        // Mark as claimed
+        claimedFees[roundId] = true;
+
+        emit FeeClaimed(roundId, msg.sender, convert(creatorFeeAmount));
+    }
+*/
 }
