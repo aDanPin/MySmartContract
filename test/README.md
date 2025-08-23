@@ -6,12 +6,12 @@ Smart contract test suite using Hardhat framework.
 
 ### Bet.js
 Tests for the betting platform contract:
+- E2E test.
 - Contract deployment
 - Bet round creation and management
 - Bet round finishing
 - Winner determination
 - Fee and win distribution
-- E2E tests in "Complex Bet Round Gas Measurement"
 
 ### CharacterSheet.js
 Tests for the character management contract:
