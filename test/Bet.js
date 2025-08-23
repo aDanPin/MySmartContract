@@ -258,6 +258,13 @@ describe("Bet Contract E2E Test", function () {
       expect(await bet.hasClaimedWin(roundId, bettorsX[1].address)).to.be.true;
       expect(await bet.hasClaimedWin(roundId, bettorsX[2].address)).to.be.true;
       
+      // Second win claiming check
+      // Try to claim win again for bettor 2 (should fail)
+      await expect(
+        bet.connect(getBettorByAddress(bettorsX[1].address)).claimWin(roundId, bettorsX[1].amount, proof2)
+      ).to.be.revertedWithCustomError(bet, "WinAlreadyClaimed");
+
+      
       // Step 10: Verify Y bettors cannot claim (they didn't win)
       // Create a fake proof for a Y bettor
       const fakeLeaf = Buffer.from(
