@@ -34,7 +34,7 @@ This project contains two main smart contracts:
    npx hardhat test
    ```
 
-## 📋 Project Structure
+## Project Structure
 
 ```
 MySmartContract/
@@ -48,7 +48,7 @@ MySmartContract/
 └── package.json           # Dependencies and scripts
 ```
 
-## 🔧 Smart Contracts
+## Smart Contracts
 
 ### Bet.sol - Decentralized Betting Platform
 
@@ -96,7 +96,7 @@ npx hardhat test test/Bet.js
 npx hardhat test test/CharacterSheet.js
 ```
 
-## 📦 Dependencies
+## Dependencies
 
 **Core Dependencies:**
 - `@openzeppelin/contracts` - Secure smart contract libraries
