@@ -1,29 +1,20 @@
 # Smart Contracts
 
 ## Bet.sol
-Decentralized betting platform allowing users to create and participate in betting rounds.
+Decentralized betting platform with Merkle proof verification and PRB/Math safe operations.
 
-### Features
-- Create betting rounds with custom fees
-- Place bets on X or Y outcomes
-- Fee and win distribution system
-
-### Key Functions
-- `createBetRound()` - Create new betting round
-- `placeBet()` - Place bets on outcomes
-- `resolveBetRound()` - End round and distributinng wins
-- `claimWin()` - Claim reward for certain contracts
+**Functions:**
+- `createBetRound()` - Create betting round
+- `placeBet()` - Place bet
+- `resolveBetRound()` - End round
+- `claimWin()` - Claim reward
 
 ## CharacterSheet.sol
-RPG character management system for storing character data and ability scores.
+RPG character management system.
 
-### Features
-- Character creation with name, level, race, class, ability score
-- History of ability score and level updates
-
-### Key Functions
-- `createCharacter()` - Create new character
-- `addChangeCharacter()` - Update character stats
-- `getCharacter()` - Retrieve character data
-- `getAbilityScoresHistory()` - Recive ability score history
+**Functions:**
+- `createCharacter()` - Create character
+- `addChangeCharacter()` - Update stats
+- `getCharacter()` - Get character data
+- `getAbilityScoresHistory()` - Get history
 
