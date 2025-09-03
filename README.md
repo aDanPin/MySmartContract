@@ -5,7 +5,7 @@ A comprehensive Solidity smart contract project featuring a decentralized bettin
 ## Overview
 
 This project contains two main smart contracts:
-- **BetToken.sol** - (WIP) An ERC20 token designed for use within the Bet.sol betting platform. The token contract will follow the OpenZeppelin ERC20 standard for security and interoperability.
+- **CharacterSheetToken.sol** - (WIP) An ERC721 token designed for use within the CharacterSheet.sol betting platform. The token contract will follow the OpenZeppelin ERC721 standard for security and interoperability.
 
 - **Bet.sol** - A decentralized betting platform with support for binary outcomes, creator fees, and Merkle tree-based winner verification
 - **CharacterSheet.sol** - An RPG character sheet system for managing D&D-style characters with ability scores and progression

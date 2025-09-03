@@ -24,6 +24,13 @@ contract CharacterSheet {
     struct Character {
         bytes32 name;
         RaceClass raceClass;
+        uint8 level;
+        uint8 str;
+        uint8 dex;
+        uint8 con;
+        uint8 intell;
+        uint8 wis;
+        uint8 cha;
     }
 
     struct AbilityScores {
@@ -42,17 +49,20 @@ contract CharacterSheet {
     uint8 public constant MAX_ABILITY_SCORE = 18;
     uint8 public constant MAX_LEVEL = 20;
 
-    mapping(address => Character) public characters;
-    mapping(address => AbilityScores[]) public abilityScoresHistory;
+    uint256 public charactersCount;
+
+    mapping(address => uint256[]) public charactersIds;
+    mapping(uint256 => Character) public characters;
+    mapping(uint256 => AbilityScores[]) public abilityScoresHistory;
 
     // Modifiers for better code organization
-    modifier characterExists() {
-        require(abilityScoresHistory[msg.sender].length > 0, "Character does not exist");
+    modifier characterExists(uint256 id) {
+        require(id >= 0 && id < charactersCount, "Character does not exist");
         _;
     }
 
-    modifier characterDoesNotExist() {
-        require(abilityScoresHistory[msg.sender].length <= 0, "Character already exists");
+    modifier characterDoesNotExist(uint256 id) {
+        require(id >= charactersCount, "Character already exists");
         _;
     }
 
@@ -66,18 +76,19 @@ contract CharacterSheet {
         _;
     }
 
-    modifier validLevel(uint8 level) {
-        require(level > 0 
-            && level <= MAX_LEVEL
-            && abilityScoresHistory[msg.sender][abilityScoresHistory[msg.sender].length - 1].level <= level, 
-            "Invalid level");
+    modifier validCharacterScores(Character calldata character) {
+        require(character.str >= MIN_ABILITY_SCORE && character.str <= MAX_ABILITY_SCORE, "Invalid strength score");
+        require(character.dex >= MIN_ABILITY_SCORE && character.dex <= MAX_ABILITY_SCORE, "Invalid dexterity score");
+        require(character.con >= MIN_ABILITY_SCORE && character.con <= MAX_ABILITY_SCORE, "Invalid constitution score");
+        require(character.intell >= MIN_ABILITY_SCORE && character.intell <= MAX_ABILITY_SCORE, "Invalid intelligence score");
+        require(character.wis >= MIN_ABILITY_SCORE && character.wis <= MAX_ABILITY_SCORE, "Invalid wisdom score");
+        require(character.cha >= MIN_ABILITY_SCORE && character.cha <= MAX_ABILITY_SCORE, "Invalid charisma score");
         _;
     }
 
-    modifier validStartLevel(uint8 level) {
-        require(level > 0 
-            && level <= MAX_LEVEL,
-            "Invalid start level");
+    modifier validLevel(uint8 level) {
+        require(level <= MAX_LEVEL && level >= 0,
+            "Invalid level");
         _;
     }
 
@@ -88,40 +99,33 @@ contract CharacterSheet {
     }
 
     function createCharacter(
-        Character calldata character,
-        AbilityScores calldata abilityScores
+        Character calldata character
     ) 
         public 
-        characterDoesNotExist()
         validName(character.name)
-        validStartLevel(abilityScores.level)
-        validAbilityScores(abilityScores)
+        validLevel(character.level)
+        validCharacterScores(character)
+        returns (uint256 id)
     {
-        characters[msg.sender] = character;
-        
-        // Store initial ability scores in history
-        abilityScoresHistory[msg.sender].push(AbilityScores({
-            timestamp: block.timestamp,
-            level: abilityScores.level,
-            str: abilityScores.str,
-            dex: abilityScores.dex,
-            con: abilityScores.con,
-            intell: abilityScores.intell,
-            wis: abilityScores.wis,
-            cha: abilityScores.cha
-        }));
+        id = charactersCount;
+
+        characters[id] = character;
+        charactersIds[msg.sender].push(id);
+        charactersCount++;
+        return id;
     }
 
     function addChangeCharacter(
+        uint256 id,
         AbilityScores calldata abilityScores
     ) 
         public 
-        characterExists
+        characterExists(id)
         validLevel(abilityScores.level)
         validAbilityScores(abilityScores)
     {
         //Store historical ability scores
-        abilityScoresHistory[msg.sender].push(AbilityScores({
+        abilityScoresHistory[id].push(AbilityScores({
             timestamp: block.timestamp,
             level: abilityScores.level,
             str: abilityScores.str,
@@ -133,41 +137,39 @@ contract CharacterSheet {
         }));
     }
 
-    function getCharacter() 
+    function getCharacter(uint256 id) 
         public 
         view 
-        characterExists
-        returns (
-            Character memory,
-            AbilityScores memory
-        ) 
+        characterExists(id)
+        returns (Character memory) 
     {
-        return (
-            characters[msg.sender],
-            abilityScoresHistory[msg.sender][abilityScoresHistory[msg.sender].length - 1]
-        );
+        return characters[id];
     }
 
-    function getAbilityScoresHistory() 
+    function getCharacterLastAbilityScores(uint256 id) 
         public 
         view 
-        characterExists
+        characterExists(id)
+        returns (AbilityScores memory) 
+    {
+        return abilityScoresHistory[id][abilityScoresHistory[id].length - 1];
+    }
+
+    function getAbilityScoresHistory(uint256 id) 
+        public 
+        view 
+        characterExists(id)
         returns (AbilityScores[] memory) 
     {
-        return abilityScoresHistory[msg.sender];
+        return abilityScoresHistory[id];
     }
 
-    function getAbilityScoresHistoryLength() 
+    function getAbilityScoresHistoryLength(uint256 id) 
         public 
         view
-        characterExists 
+        characterExists(id)
         returns (uint256) 
     {
-        return abilityScoresHistory[msg.sender].length;
-    }
-
-    function deleteCharacter() public characterExists {
-        delete characters[msg.sender];
-        delete abilityScoresHistory[msg.sender];
+        return abilityScoresHistory[id].length;
     }
 }
