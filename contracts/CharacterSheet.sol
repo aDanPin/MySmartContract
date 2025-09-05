@@ -51,7 +51,6 @@ contract CharacterSheet {
 
     uint256 public charactersCount;
 
-    mapping(address => uint256[]) public charactersIds;
     mapping(uint256 => Character) public characters;
     mapping(uint256 => AbilityScores[]) public abilityScoresHistory;
 
@@ -110,7 +109,6 @@ contract CharacterSheet {
         id = charactersCount;
 
         characters[id] = character;
-        charactersIds[msg.sender].push(id);
         charactersCount++;
         return id;
     }
