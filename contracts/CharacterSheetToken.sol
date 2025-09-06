@@ -98,4 +98,8 @@ contract CharacterSheetToken is CharacterSheet, ERC721, Ownable {
     {
         return super.supportsInterface(interfaceId);
     }
+
+    function _baseURI() internal view virtual override returns (string memory) {
+        return _baseTokenURI;
+    }
 }
