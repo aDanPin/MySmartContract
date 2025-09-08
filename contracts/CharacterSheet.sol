@@ -21,7 +21,8 @@ contract CharacterSheet {
         HalflingThief
     }
 
-    struct Character {
+    struct CharacterShot {
+        uint256 timestamp;
         bytes32 name;
         RaceClass raceClass;
         uint8 level;
@@ -32,18 +33,6 @@ contract CharacterSheet {
         uint8 wis;
         uint8 cha;
     }
-
-    struct AbilityScores {
-        uint256 timestamp;
-        uint8 level;
-        uint8 str;
-        uint8 dex;
-        uint8 con;
-        uint8 intell;
-        uint8 wis;
-        uint8 cha;
-    }
-
     // Constants for validation
     uint8 public constant MIN_ABILITY_SCORE = 3;
     uint8 public constant MAX_ABILITY_SCORE = 18;
@@ -51,8 +40,7 @@ contract CharacterSheet {
 
     uint256 public charactersCount;
 
-    mapping(uint256 => Character) public characters;
-    mapping(uint256 => AbilityScores[]) public abilityScoresHistory;
+    mapping(uint256 => CharacterShot[]) public abilityScoresHistory;
 
     // Modifiers for better code organization
     modifier characterExists(uint256 id) {
@@ -65,105 +53,79 @@ contract CharacterSheet {
         _;
     }
 
-    modifier validAbilityScores(AbilityScores calldata abilityScores) {
-        require(abilityScores.str >= MIN_ABILITY_SCORE && abilityScores.str <= MAX_ABILITY_SCORE, "Invalid strength score");
-        require(abilityScores.dex >= MIN_ABILITY_SCORE && abilityScores.dex <= MAX_ABILITY_SCORE, "Invalid dexterity score");
-        require(abilityScores.con >= MIN_ABILITY_SCORE && abilityScores.con <= MAX_ABILITY_SCORE, "Invalid constitution score");
-        require(abilityScores.intell >= MIN_ABILITY_SCORE && abilityScores.intell <= MAX_ABILITY_SCORE, "Invalid intelligence score");
-        require(abilityScores.wis >= MIN_ABILITY_SCORE && abilityScores.wis <= MAX_ABILITY_SCORE, "Invalid wisdom score");
-        require(abilityScores.cha >= MIN_ABILITY_SCORE && abilityScores.cha <= MAX_ABILITY_SCORE, "Invalid charisma score");
-        _;
-    }
-
-    modifier validCharacterScores(Character calldata character) {
-        require(character.str >= MIN_ABILITY_SCORE && character.str <= MAX_ABILITY_SCORE, "Invalid strength score");
-        require(character.dex >= MIN_ABILITY_SCORE && character.dex <= MAX_ABILITY_SCORE, "Invalid dexterity score");
-        require(character.con >= MIN_ABILITY_SCORE && character.con <= MAX_ABILITY_SCORE, "Invalid constitution score");
-        require(character.intell >= MIN_ABILITY_SCORE && character.intell <= MAX_ABILITY_SCORE, "Invalid intelligence score");
-        require(character.wis >= MIN_ABILITY_SCORE && character.wis <= MAX_ABILITY_SCORE, "Invalid wisdom score");
-        require(character.cha >= MIN_ABILITY_SCORE && character.cha <= MAX_ABILITY_SCORE, "Invalid charisma score");
-        _;
-    }
-
-    modifier validLevel(uint8 level) {
-        require(level <= MAX_LEVEL && level >= 0,
-            "Invalid level");
-        _;
-    }
-
-    modifier validName(bytes32 name) {
-        require(name != bytes32(0), 
-            "Invalid name");
-        _;
-    }
-
-    modifier noEmptyHistory(uint256 id) {
-        require(abilityScoresHistory[id].length > 0, "No ability scores history");
+    modifier validCharacterShot(CharacterShot calldata characterShot) {
+        require(characterShot.level >= 0 && characterShot.level <= MAX_LEVEL, "Invalid level");
+        require(characterShot.str >= MIN_ABILITY_SCORE && characterShot.str <= MAX_ABILITY_SCORE, "Invalid strength score");
+        require(characterShot.dex >= MIN_ABILITY_SCORE && characterShot.dex <= MAX_ABILITY_SCORE, "Invalid dexterity score");
+        require(characterShot.con >= MIN_ABILITY_SCORE && characterShot.con <= MAX_ABILITY_SCORE, "Invalid constitution score");
+        require(characterShot.intell >= MIN_ABILITY_SCORE && characterShot.intell <= MAX_ABILITY_SCORE, "Invalid intelligence score");
+        require(characterShot.wis >= MIN_ABILITY_SCORE && characterShot.wis <= MAX_ABILITY_SCORE, "Invalid wisdom score");
+        require(characterShot.cha >= MIN_ABILITY_SCORE && characterShot.cha <= MAX_ABILITY_SCORE, "Invalid charisma score");
         _;
     }
 
     function createCharacter(
-        Character calldata character
+        CharacterShot calldata character
     ) 
         public 
-        validName(character.name)
-        validLevel(character.level)
-        validCharacterScores(character)
+        validCharacterShot(character)
         returns (uint256 id)
     {
         id = charactersCount;
 
-        characters[id] = character;
+        abilityScoresHistory[id].push(CharacterShot({
+            timestamp: block.timestamp,
+            name: character.name,
+            raceClass: character.raceClass,
+            level: character.level,
+            str: character.str,
+            dex: character.dex,
+            con: character.con,
+            intell: character.intell,
+            wis: character.wis,
+            cha: character.cha
+        }));
         charactersCount++;
         return id;
     }
 
-    function addChangeCharacter(
+    function changeCharacter(
         uint256 id,
-        AbilityScores calldata abilityScores
+        CharacterShot calldata characterShot
     ) 
         public 
         characterExists(id)
-        validLevel(abilityScores.level)
-        validAbilityScores(abilityScores)
+        validCharacterShot(characterShot)
     {
         //Store historical ability scores
-        abilityScoresHistory[id].push(AbilityScores({
+        abilityScoresHistory[id].push(CharacterShot({
             timestamp: block.timestamp,
-            level: abilityScores.level,
-            str: abilityScores.str,
-            dex: abilityScores.dex,
-            con: abilityScores.con,
-            intell: abilityScores.intell,
-            wis: abilityScores.wis,
-            cha: abilityScores.cha
+            name: characterShot.name,
+            raceClass: characterShot.raceClass,
+            level: characterShot.level,
+            str: characterShot.str,
+            dex: characterShot.dex,
+            con: characterShot.con,
+            intell: characterShot.intell,
+            wis: characterShot.wis,
+            cha: characterShot.cha
         }));
     }
 
-    function getCharacter(uint256 id) 
+    function getLastCharacterShot(uint256 id) 
         public 
         view 
         characterExists(id)
-        returns (Character memory) 
-    {
-        return characters[id];
-    }
-
-    function getCharacterLastAbilityScores(uint256 id) 
-        public 
-        view 
-        characterExists(id)
-        noEmptyHistory(id)
-        returns (AbilityScores memory) 
+        returns (CharacterShot memory) 
     {
         return abilityScoresHistory[id][abilityScoresHistory[id].length - 1];
     }
 
-    function getAbilityScoresHistory(uint256 id) 
+    function getCharacterShotHaistory(uint256 id) 
         public 
         view 
         characterExists(id)
-        returns (AbilityScores[] memory) 
+        returns (CharacterShot[] memory) 
     {
         return abilityScoresHistory[id];
     }

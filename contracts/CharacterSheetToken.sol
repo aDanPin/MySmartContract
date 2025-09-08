@@ -12,7 +12,7 @@ contract CharacterSheetToken is CharacterSheet, ERC721, Ownable {
     string private _baseTokenURI;
     
     // Mapping from token ID to character data
-    mapping(uint256 => Character) private _tokenCharacters;
+    mapping(uint256 => CharacterShot) private _tokenCharacters;
     
     // Events
     event CharacterMinted(uint256 indexed tokenId, address indexed owner, bytes32 name);
@@ -31,11 +31,9 @@ contract CharacterSheetToken is CharacterSheet, ERC721, Ownable {
      * @param character The character data to mint
      * @return tokenId The ID of the newly minted token
      */
-    function mintCharacter(Character calldata character) 
+    function mintCharacter(CharacterShot calldata character) 
         public 
-        validName(character.name)
-        validLevel(character.level)
-        validCharacterScores(character)
+        validCharacterShot(character)
         returns (uint256 tokenId)
     {
         // Create the character in the base contract
@@ -50,24 +48,23 @@ contract CharacterSheetToken is CharacterSheet, ERC721, Ownable {
     }
 
     /**
-     * @dev Updates a character's level and ability scores
+     * @dev Updates a character's level and character shot
      * @param tokenId The token ID to update
-     * @param abilityScores The new ability scores
+     * @param characterShot The new character shot
      */
     function updateCharacter(
         uint256 tokenId,
-        AbilityScores calldata abilityScores
+        CharacterShot calldata characterShot
     ) 
         public 
         characterExists(tokenId)
-        validLevel(abilityScores.level)
-        validAbilityScores(abilityScores)
+        validCharacterShot(characterShot)
     {
         // Check if caller owns the token
         require(ownerOf(tokenId) == msg.sender, "Not token owner");
 
         // Update the character in the base contract
-        super.addChangeCharacter(tokenId, abilityScores);
+        super.changeCharacter(tokenId, characterShot);
                 
         emit CharacterUpdated(tokenId);
     }
