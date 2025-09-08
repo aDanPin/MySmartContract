@@ -183,7 +183,7 @@ describe("CharacterSheetToken", function () {
     });
 
     it("Should return correct character data", async function () {
-      const character = await characterSheetToken.getTokenCharacter(tokenId);
+      const character = await characterSheetToken.getCharacter(tokenId);
       expect(character.name).to.equal(ethers.encodeBytes32String("Legolas"));
       expect(character.raceClass).to.equal(8);
       expect(character.level).to.equal(3);
@@ -266,6 +266,7 @@ describe("CharacterSheetToken", function () {
       await characterSheetToken.connect(addr1).approve(addr2.address, tokenId);
       await characterSheetToken.connect(addr2).transferFrom(addr1.address, addr2.address, tokenId);
       expect(await characterSheetToken.ownerOf(tokenId)).to.equal(addr2.address);
+      expect(await characterSheetToken.ownerOf(tokenId)).to.not.equal(addr1.address);
     });
 
     it("Should revert safeTransferFrom to contract that does not implement ERC721Receiver", async function () {

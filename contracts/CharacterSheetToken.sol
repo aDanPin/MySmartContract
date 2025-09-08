@@ -73,20 +73,6 @@ contract CharacterSheetToken is CharacterSheet, ERC721, Ownable {
     }
 
     /**
-     * @dev Gets the character data for a specific token
-     * @param tokenId The token ID
-     * @return The character data
-     */
-    function getTokenCharacter(uint256 tokenId) 
-        public 
-        view 
-        returns (Character memory) 
-    {
-        require(ownerOf(tokenId) != address(0), "Token does not exist");
-        return super.getCharacter(tokenId);
-    }
-
-    /**
      * @dev Required override for ERC721
      */
     function supportsInterface(bytes4 interfaceId)
