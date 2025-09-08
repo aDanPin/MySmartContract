@@ -4,9 +4,8 @@ A comprehensive Solidity smart contract project featuring a decentralized bettin
 
 ## Overview
 
-This project contains two main smart contracts:
-- **CharacterSheetToken.sol** - (WIP) An ERC721 token designed for use within the CharacterSheet.sol betting platform. The token contract will follow the OpenZeppelin ERC721 standard for security and interoperability.
-
+This project contains three main smart contracts:
+- **CharacterSheetToken.sol** - An ERC721 NFT contract that combines character management with tokenization, allowing characters to be minted as tradeable NFTs
 - **Bet.sol** - A decentralized betting platform with support for binary outcomes, creator fees, and Merkle tree-based winner verification
 - **CharacterSheet.sol** - An RPG character sheet system for managing D&D-style characters with ability scores and progression
 
@@ -39,16 +38,40 @@ This project contains two main smart contracts:
 ```
 MySmartContract/
 ├── contracts/
-│   ├── Bet.sol              # Decentralized betting platform
-│   └── CharacterSheet.sol   # RPG character management
+│   ├── Bet.sol                    # Decentralized betting platform
+│   ├── CharacterSheet.sol         # RPG character management
+│   └── CharacterSheetToken.sol    # ERC721 NFT character tokens
 ├── test/
-│   ├── Bet.js              # Bet contract tests
-│   └── CharacterSheet.js   # CharacterSheet contract tests
-├── hardhat.config.js       # Hardhat configuration
-└── package.json           # Dependencies and scripts
+│   ├── Bet.js                     # Bet contract tests
+│   ├── CharacterSheet.js          # CharacterSheet contract tests
+│   └── CharacterSheetToken.js     # CharacterSheetToken contract tests
+├── hardhat.config.js              # Hardhat configuration
+└── package.json                   # Dependencies and scripts
 ```
 
 ## Smart Contracts
+
+### CharacterSheetToken.sol - ERC721 NFT Character Tokens
+
+**Features:**
+- ERC721 NFT implementation for character tokenization
+- Inherits from CharacterSheet.sol for full character management functionality
+- Mint characters as tradeable NFTs
+- Update character stats (only by token owner)
+- Metadata URI support for off-chain character data
+- Ownership-based access control for character updates
+
+**Key Functions:**
+- `mintCharacter()` - Create and mint a new character as an NFT
+- `updateCharacter()` - Update character ability scores (owner only)
+- `getTokenCharacter()` - Retrieve character data for a specific token
+- `ownerOf()` - Get the current owner of a character token
+- `transferFrom()` - Transfer character ownership (inherited from ERC721)
+
+**Integration:**
+- Extends CharacterSheet.sol functionality with NFT capabilities
+- Characters can be traded, sold, or transferred like any ERC721 token
+- Maintains all original character management features while adding tokenization
 
 ### Bet.sol - Decentralized Betting Platform
 
@@ -94,6 +117,7 @@ Run specific test files:
 ```bash
 npx hardhat test test/Bet.js
 npx hardhat test test/CharacterSheet.js
+npx hardhat test test/CharacterSheetToken.js
 ```
 
 ## Dependencies
