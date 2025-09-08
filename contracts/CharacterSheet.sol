@@ -97,6 +97,11 @@ contract CharacterSheet {
         _;
     }
 
+    modifier noEmptyHistory(uint256 id) {
+        require(abilityScoresHistory[id].length > 0, "No ability scores history");
+        _;
+    }
+
     function createCharacter(
         Character calldata character
     ) 
@@ -148,6 +153,7 @@ contract CharacterSheet {
         public 
         view 
         characterExists(id)
+        noEmptyHistory(id)
         returns (AbilityScores memory) 
     {
         return abilityScoresHistory[id][abilityScoresHistory[id].length - 1];

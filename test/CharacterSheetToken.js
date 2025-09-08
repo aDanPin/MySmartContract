@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const { toBigInt } = require("ethers");
 const { ethers } = require("hardhat");
 
 describe("CharacterSheetToken", function () {
@@ -284,6 +285,77 @@ describe("CharacterSheetToken", function () {
       ).to.be.revertedWithCustomError(characterSheetToken, "ERC721InvalidReceiver")
         .withArgs(nonReceiver.target);
     });
+  });
+
+  it("Gas: mint one char, update 50 times, get char", async function () {
+    // Mint one character
+    const char = {
+      name: ethers.encodeBytes32String("GasHero"),
+      raceClass: 0,
+      level: 1,
+      str: 10,
+      dex: 10,
+      con: 10,
+      intell: 10,
+      wis: 10,
+      cha: 10
+    };
+
+    const mintTx = await characterSheetToken.connect(addr1).mintCharacter(char);
+    const mintReceipt = await mintTx.wait();
+    const tokenId = mintReceipt.logs
+      .map(log => log.args && log.args.tokenId)
+      .find(id => id !== undefined) ?? 0;
+    console.log("Gas mint:", mintReceipt.gasUsed.toString());
+
+    // Update this character 50 times
+    let totalUpdateGas = 0n;
+    for (let i = 0; i < 50; i++) {
+      const abilityScores = {
+        timestamp: 0, // ignored by contract, will be set to block.timestamp
+        level: 1 + i > 20 ? 20 : 1 + i,
+        str: 10 + Math.floor(i % 9),
+        dex: 10 + Math.floor((i + 1) % 9),
+        con: 10 + Math.floor((i + 2) % 9),
+        intell: 10 + Math.floor((i + 3) % 9),
+        wis: 10 + Math.floor((i + 4) % 9),
+        cha: 10 + Math.floor((i + 5) % 9)
+      };
+      const updateTx = await characterSheetToken.connect(addr1).updateCharacter(tokenId, abilityScores);
+      const updateReceipt = await updateTx.wait();
+      totalUpdateGas += updateReceipt.gasUsed;
+    }
+    // Print gas for last update
+    console.log("Everage update gas:", (totalUpdateGas / 50n).toString());
+
+    const data = characterSheetToken.interface.encodeFunctionData("getCharacter", [tokenId]);
+    const gas = await ethers.provider.estimateGas({
+      to: addr1.address,
+      data: data,
+    });
+    console.log("Gas getCharacter:", gas.toString());
+
+    const getCharTx = await characterSheetToken.getCharacter(tokenId);
+    expect(getCharTx.name).to.equal(char.name);
+    expect(getCharTx.level).to.equal(1);
+
+    // Gas measurement for getCharacterLastAbilityScores using a transaction and receipt
+    const data1 = characterSheetToken.interface.encodeFunctionData("getCharacterLastAbilityScores", [tokenId]);
+    const gas1 = await ethers.provider.estimateGas({
+      to: addr1.address,
+      data: data1,
+    });
+    console.log("Gas getLastAbilityScores:", gas1.toString());
+
+    // Get last ability scores and check values
+    const lastScores = await characterSheetToken.getCharacterLastAbilityScores(tokenId);
+    expect(lastScores.level).to.equal(20);
+    expect(lastScores.str).to.equal(10 + Math.floor(49 % 9));
+    expect(lastScores.dex).to.equal(10 + Math.floor((49 + 1) % 9));
+    expect(lastScores.con).to.equal(10 + Math.floor((49 + 2) % 9));
+    expect(lastScores.intell).to.equal(10 + Math.floor((49 + 3) % 9));
+    expect(lastScores.wis).to.equal(10 + Math.floor((49 + 4) % 9));
+    expect(lastScores.cha).to.equal(10 + Math.floor((49 + 5) % 9));
   });
 });
 
