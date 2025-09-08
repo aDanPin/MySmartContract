@@ -46,7 +46,7 @@ describe("CharacterSheet", function () {
       // Get the character ID from the transaction
       let characterCount = await characterSheet.charactersCount();
       const characterId = characterCount - 1n;
-      const character = await characterSheet.connect(addr1).getCharacter(ethers.toBigInt(characterId));
+      const character = await characterSheet.connect(addr1).getLastCharacterShot(ethers.toBigInt(characterId));
       expect(character.name).to.equal(validCharacter.name);
       expect(character.raceClass).to.equal(validCharacter.raceClass);
       expect(character.level).to.equal(validCharacter.level);
@@ -121,8 +121,8 @@ describe("CharacterSheet", function () {
       const characterId1 = 0;
       const characterId2 = 1;
       
-      const char1 = await characterSheet.connect(addr1).getCharacter(characterId1);
-      const char2 = await characterSheet.connect(addr2).getCharacter(characterId2);
+      const char1 = await characterSheet.connect(addr1).getLastCharacterShot(characterId1);
+      const char2 = await characterSheet.connect(addr2).getLastCharacterShot(characterId2);
 
       expect(char1.name).to.equal(validCharacter.name);
       expect(char2.name).to.equal(character2.name);
@@ -143,7 +143,8 @@ describe("CharacterSheet", function () {
     };
 
     const updatedScores = {
-      timestamp: 0,
+      name: ethers.encodeBytes32String("Legolas"),
+      raceClass: 8, // ElfFighter
       level: 2,
       str: 13,
       dex: 18,
@@ -162,27 +163,27 @@ describe("CharacterSheet", function () {
     });
 
     it("Should update character ability scores successfully", async function () {
-      await expect(characterSheet.connect(addr1).addChangeCharacter(characterId, updatedScores))
+      await expect(characterSheet.connect(addr1).changeCharacter(characterId, updatedScores))
         .to.not.be.reverted;
 
-      const history = await characterSheet.connect(addr1).getAbilityScoresHistory(characterId);
-      expect(history.length).to.equal(1);
-      expect(history[0].level).to.equal(updatedScores.level);
-      expect(history[0].str).to.equal(updatedScores.str);
-      expect(history[0].dex).to.equal(updatedScores.dex);
+      const history = await characterSheet.connect(addr1).getCharacterShotHaistory(characterId);
+      expect(history.length).to.equal(2); // Original creation + update
+      expect(history[1].level).to.equal(updatedScores.level);
+      expect(history[1].str).to.equal(updatedScores.str);
+      expect(history[1].dex).to.equal(updatedScores.dex);
     });
 
     it("Should maintain character history", async function () {
-      await characterSheet.connect(addr1).addChangeCharacter(characterId, updatedScores);
+      await characterSheet.connect(addr1).changeCharacter(characterId, updatedScores);
 
-      const history = await characterSheet.connect(addr1).getAbilityScoresHistory(characterId);
-      expect(history.length).to.equal(1);
-      expect(history[0].level).to.equal(updatedScores.level);
+      const history = await characterSheet.connect(addr1).getCharacterShotHaistory(characterId);
+      expect(history.length).to.equal(2); // Original creation + update
+      expect(history[1].level).to.equal(updatedScores.level);
     });
 
     it("Should not allow updates for non-existent character", async function () {
       await expect(
-        characterSheet.connect(addr2).addChangeCharacter(999, updatedScores)
+        characterSheet.connect(addr2).changeCharacter(999, updatedScores)
       ).to.be.revertedWith("Character does not exist");
     });
 
@@ -190,7 +191,7 @@ describe("CharacterSheet", function () {
       const invalidScores = { ...updatedScores, con: 2 };
       
       await expect(
-        characterSheet.connect(addr1).addChangeCharacter(characterId, invalidScores)
+        characterSheet.connect(addr1).changeCharacter(characterId, invalidScores)
       ).to.be.revertedWith("Invalid constitution score");
     });
 
@@ -198,7 +199,7 @@ describe("CharacterSheet", function () {
       const invalidScores = { ...updatedScores, level: 21 };
       
       await expect(
-        characterSheet.connect(addr1).addChangeCharacter(characterId, invalidScores)
+        characterSheet.connect(addr1).changeCharacter(characterId, invalidScores)
       ).to.be.revertedWith("Invalid level");
     });
   });
@@ -225,7 +226,7 @@ describe("CharacterSheet", function () {
     });
 
     it("Should retrieve character data correctly", async function () {
-      const character = await characterSheet.connect(addr1).getCharacter(characterId);
+      const character = await characterSheet.connect(addr1).getLastCharacterShot(characterId);
       
       expect(character.name).to.equal(validCharacter.name);
       expect(character.raceClass).to.equal(validCharacter.raceClass);
@@ -240,15 +241,16 @@ describe("CharacterSheet", function () {
 
     it("Should not allow retrieval for non-existent character", async function () {
       await expect(
-        characterSheet.connect(addr2).getCharacter(999)
+        characterSheet.connect(addr2).getLastCharacterShot(999)
       ).to.be.revertedWith("Character does not exist");
     });
 
     it("Should return correct history length", async function () {
-      expect(await characterSheet.connect(addr1).getAbilityScoresHistoryLength(characterId)).to.equal(0);
+      expect(await characterSheet.connect(addr1).getAbilityScoresHistoryLength(characterId)).to.equal(1); // Initial creation
       
       const updatedScores = {
-        timestamp: 0,
+        name: ethers.encodeBytes32String("Gimli"),
+        raceClass: 4, // DwarfFighter
         level: 6,
         str: 18,
         dex: 10,
@@ -257,15 +259,16 @@ describe("CharacterSheet", function () {
         wis: 12,
         cha: 9
       };
-      await characterSheet.connect(addr1).addChangeCharacter(characterId, updatedScores);
+      await characterSheet.connect(addr1).changeCharacter(characterId, updatedScores);
       
-      expect(await characterSheet.connect(addr1).getAbilityScoresHistoryLength(characterId)).to.equal(1);
+      expect(await characterSheet.connect(addr1).getAbilityScoresHistoryLength(characterId)).to.equal(2);
     });
 
     it("Should return complete ability scores history", async function () {
       
       const updatedScores = {
-        timestamp: 0,
+        name: ethers.encodeBytes32String("Gimli"),
+        raceClass: 4, // DwarfFighter
         level: 6,
         str: 18,
         dex: 10,
@@ -274,11 +277,11 @@ describe("CharacterSheet", function () {
         wis: 12,
         cha: 9
       };
-      await characterSheet.connect(addr1).addChangeCharacter(characterId, updatedScores);
+      await characterSheet.connect(addr1).changeCharacter(characterId, updatedScores);
 
-      const history = await characterSheet.connect(addr1).getAbilityScoresHistory(characterId);
-      expect(history.length).to.equal(1);
-      expect(history[0].level).to.equal(6);
+      const history = await characterSheet.connect(addr1).getCharacterShotHaistory(characterId);
+      expect(history.length).to.equal(2); // Initial creation + update
+      expect(history[1].level).to.equal(6);
     });
   });
 
@@ -334,7 +337,8 @@ describe("CharacterSheet", function () {
     };
 
     const baseScores = {
-      timestamp: 0,
+      name: ethers.encodeBytes32String("HistoryTest"),
+      raceClass: 0,
       level: 1,
       str: 10,
       dex: 10,
@@ -356,26 +360,26 @@ describe("CharacterSheet", function () {
       // Add multiple updates
       for (let i = 2; i <= 5; i++) {
         const updatedScores = { ...baseScores, level: i, str: 10 + i };
-        await characterSheet.connect(addr1).addChangeCharacter(characterId, updatedScores);
+        await characterSheet.connect(addr1).changeCharacter(characterId, updatedScores);
       }
 
-      const history = await characterSheet.connect(addr1).getAbilityScoresHistory(characterId);
-      expect(history.length).to.equal(4);
+      const history = await characterSheet.connect(addr1).getCharacterShotHaistory(characterId);
+      expect(history.length).to.equal(5); // Initial creation + 4 updates
       
       // Check that history is maintained in order
-      for (let i = 0; i < 4; i++) {
-        expect(history[i].level).to.equal(i + 2);
+      for (let i = 1; i < 5; i++) { // Skip index 0 (initial creation)
+        expect(history[i].level).to.equal(i + 1);
       }
     });
 
     it("Should return latest character data after multiple updates", async function () {
       const finalScores = { ...baseScores, level: 10, str: 18, dex: 16 };
-      await characterSheet.connect(addr1).addChangeCharacter(characterId, finalScores);
+      await characterSheet.connect(addr1).changeCharacter(characterId, finalScores);
 
-      const lastAbilityScores = await characterSheet.connect(addr1).getCharacterLastAbilityScores(characterId);
+      const lastCharacterShot = await characterSheet.connect(addr1).getLastCharacterShot(characterId);
       
-      expect(lastAbilityScores.level).to.equal(10); // Original character level doesn't change
-      expect(lastAbilityScores.str).to.equal(18); // Original character stats don't change
+      expect(lastCharacterShot.level).to.equal(10);
+      expect(lastCharacterShot.str).to.equal(18);
     });
   });
 
@@ -410,8 +414,8 @@ describe("CharacterSheet", function () {
       await characterSheet.connect(addr2).createCharacter(character2);
 
       // Verify each user can access their character by ID
-      const char1 = await characterSheet.connect(addr1).getCharacter(0);
-      const char2 = await characterSheet.connect(addr2).getCharacter(1);
+      const char1 = await characterSheet.connect(addr1).getLastCharacterShot(0);
+      const char2 = await characterSheet.connect(addr2).getLastCharacterShot(1);
 
       expect(char1.name).to.equal(character1.name);
       expect(char2.name).to.equal(character2.name);
@@ -434,7 +438,8 @@ describe("CharacterSheet", function () {
     };
 
     const updatedScores = {
-      timestamp: 0,
+      name: ethers.encodeBytes32String("GasTestCharacter"),
+      raceClass: 0,
       level: 2,
       str: 11,
       dex: 13,
@@ -473,9 +478,9 @@ describe("CharacterSheet", function () {
        });
     });
 
-    describe("addChangeCharacter Gas Tests", function () {
+    describe("changeCharacter Gas Tests", function () {
              it("Measure gas for single character update", async function () {
-         const estimatedGas = await characterSheet.connect(addr1).addChangeCharacter.estimateGas(characterId, updatedScores);
+         const estimatedGas = await characterSheet.connect(addr1).changeCharacter.estimateGas(characterId, updatedScores);
          console.log(`UpdateCharacter (single update): ${estimatedGas} gas`);
          expect(estimatedGas).to.be.lessThan(BigInt(100000));
        });
@@ -485,7 +490,7 @@ describe("CharacterSheet", function () {
          
          for (let i = 2; i <= 5; i++) {
            const scores = { ...updatedScores, level: i };
-           const estimatedGas = await characterSheet.connect(addr1).addChangeCharacter.estimateGas(characterId, scores);
+           const estimatedGas = await characterSheet.connect(addr1).changeCharacter.estimateGas(characterId, scores);
            totalGas += estimatedGas;
          }
         
@@ -494,9 +499,9 @@ describe("CharacterSheet", function () {
       });
     });
 
-    describe("getCharacter Gas Tests", function () {
+    describe("getLastCharacterShot Gas Tests", function () {
       it("Measure gas for character retrieval", async function () {
-         const estimatedGas = await characterSheet.connect(addr1).getCharacter.estimateGas(characterId);
+         const estimatedGas = await characterSheet.connect(addr1).getLastCharacterShot.estimateGas(characterId);
          console.log(`GetCharacter: ${estimatedGas} gas`);
          expect(estimatedGas).to.be.lessThan(BigInt(50000));
       });
@@ -505,18 +510,18 @@ describe("CharacterSheet", function () {
         // Add multiple updates first
         for (let i = 2; i <= 10; i++) {
           const scores = { ...updatedScores, level: i };
-          await characterSheet.connect(addr1).addChangeCharacter(characterId, scores);
+          await characterSheet.connect(addr1).changeCharacter(characterId, scores);
         }
 
-        const estimatedGas = await characterSheet.connect(addr1).getCharacter.estimateGas(characterId);
+        const estimatedGas = await characterSheet.connect(addr1).getLastCharacterShot.estimateGas(characterId);
         console.log(`GetCharacter (after 10 updates): ${estimatedGas} gas`);
         expect(estimatedGas).to.be.lessThan(BigInt(50000));
        });
     });
 
-    describe("getAbilityScoresHistory Gas Tests", function () {
+    describe("getCharacterShotHaistory Gas Tests", function () {
       it("Measure gas for history retrieval with single entry", async function () {
-         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistory.estimateGas(characterId);
+         const estimatedGas = await characterSheet.connect(addr1).getCharacterShotHaistory.estimateGas(characterId);
          console.log(`GetCharacterHistory (1 entry): ${estimatedGas} gas`);
          expect(estimatedGas).to.be.lessThan(BigInt(50000));
        });
@@ -525,10 +530,10 @@ describe("CharacterSheet", function () {
         // Add multiple updates first
         for (let i = 2; i <= 10; i++) {
           const scores = { ...updatedScores, level: i };
-          await characterSheet.connect(addr1).addChangeCharacter(characterId, scores);
+          await characterSheet.connect(addr1).changeCharacter(characterId, scores);
         }
 
-         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistory.estimateGas(characterId);
+         const estimatedGas = await characterSheet.connect(addr1).getCharacterShotHaistory.estimateGas(characterId);
          console.log(`GetCharacterHistory (11 entries): ${estimatedGas} gas`);
          expect(estimatedGas).to.be.lessThan(BigInt(200000));
        });
@@ -537,10 +542,10 @@ describe("CharacterSheet", function () {
         // Add many updates to test scalability
         for (let i = 2; i <= 50; i++) {
           const scores = { ...updatedScores, level: 10 };
-          await characterSheet.connect(addr1).addChangeCharacter(characterId, scores);
+          await characterSheet.connect(addr1).changeCharacter(characterId, scores);
         }
 
-         const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistory.estimateGas(characterId);
+         const estimatedGas = await characterSheet.connect(addr1).getCharacterShotHaistory.estimateGas(characterId);
          console.log(`GetCharacterHistory (51 entries): ${estimatedGas} gas`);
          expect(estimatedGas).to.be.lessThan(BigInt(1000000));
        });
@@ -557,7 +562,7 @@ describe("CharacterSheet", function () {
         // Add multiple updates first
         for (let i = 2; i <= 20; i++) {
           const scores = { ...updatedScores, level: 10 };
-          await characterSheet.connect(addr1).addChangeCharacter(characterId, scores);
+          await characterSheet.connect(addr1).changeCharacter(characterId, scores);
         }
 
          const estimatedGas = await characterSheet.connect(addr1).getAbilityScoresHistoryLength.estimateGas(characterId);
@@ -582,18 +587,18 @@ describe("CharacterSheet", function () {
         // Update character multiple times
         for (let i = 2; i <= 5; i++) {
           const scores = { ...updatedScores, level: i };
-          const updateTx = await characterSheet.connect(addr2).addChangeCharacter(newCharacterId, scores);
+          const updateTx = await characterSheet.connect(addr2).changeCharacter(newCharacterId, scores);
           const updateReceipt = await updateTx.wait();
           totalGas += updateReceipt.gasUsed;
         }
 
         // Retrieve character
-        totalGas += await characterSheet.connect(addr2).getCharacter.estimateGas(newCharacterId);
-        await characterSheet.connect(addr2).getCharacter(newCharacterId);
+        totalGas += await characterSheet.connect(addr2).getLastCharacterShot.estimateGas(newCharacterId);
+        await characterSheet.connect(addr2).getLastCharacterShot(newCharacterId);
 
         // Get history
-        totalGas += await characterSheet.connect(addr2).getAbilityScoresHistory.estimateGas(newCharacterId);;
-        await characterSheet.connect(addr2).getAbilityScoresHistory(newCharacterId);
+        totalGas += await characterSheet.connect(addr2).getCharacterShotHaistory.estimateGas(newCharacterId);;
+        await characterSheet.connect(addr2).getCharacterShotHaistory(newCharacterId);
 
         // Get history length
         totalGas += await characterSheet.connect(addr2).getAbilityScoresHistoryLength.estimateGas(newCharacterId);

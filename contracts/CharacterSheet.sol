@@ -21,6 +21,18 @@ contract CharacterSheet {
         HalflingThief
     }
 
+    struct CharacterPoints {
+        bytes32 name;
+        RaceClass raceClass;
+        uint8 level;
+        uint8 str;
+        uint8 dex;
+        uint8 con;
+        uint8 intell;
+        uint8 wis;
+        uint8 cha;
+    }
+
     struct CharacterShot {
         uint256 timestamp;
         bytes32 name;
@@ -53,8 +65,9 @@ contract CharacterSheet {
         _;
     }
 
-    modifier validCharacterShot(CharacterShot calldata characterShot) {
+    modifier validCharacterShot(CharacterPoints calldata characterShot) {
         require(characterShot.level >= 0 && characterShot.level <= MAX_LEVEL, "Invalid level");
+        require(characterShot.name != bytes32(0), "Invalid name");
         require(characterShot.str >= MIN_ABILITY_SCORE && characterShot.str <= MAX_ABILITY_SCORE, "Invalid strength score");
         require(characterShot.dex >= MIN_ABILITY_SCORE && characterShot.dex <= MAX_ABILITY_SCORE, "Invalid dexterity score");
         require(characterShot.con >= MIN_ABILITY_SCORE && characterShot.con <= MAX_ABILITY_SCORE, "Invalid constitution score");
@@ -65,7 +78,7 @@ contract CharacterSheet {
     }
 
     function createCharacter(
-        CharacterShot calldata character
+        CharacterPoints calldata character
     ) 
         public 
         validCharacterShot(character)
@@ -91,7 +104,7 @@ contract CharacterSheet {
 
     function changeCharacter(
         uint256 id,
-        CharacterShot calldata characterShot
+        CharacterPoints calldata characterShot
     ) 
         public 
         characterExists(id)

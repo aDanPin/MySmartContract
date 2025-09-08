@@ -122,7 +122,8 @@ describe("CharacterSheetToken", function () {
 
     it("Should update character successfully", async function () {
       const newAbilityScores = {
-        timestamp: Math.floor(Date.now() / 1000),
+        name: ethers.encodeBytes32String("Aragorn"),
+        raceClass: 0,
         level: 2,
         str: 17,
         dex: 15,
@@ -136,14 +137,15 @@ describe("CharacterSheetToken", function () {
         .to.emit(characterSheetToken, "CharacterUpdated")
         .withArgs(tokenId);
 
-      const updatedCharacter = await characterSheetToken.getCharacterLastAbilityScores(tokenId);
+      const updatedCharacter = await characterSheetToken.getLastCharacterShot(tokenId);
       expect(updatedCharacter.level).to.equal(2);
       expect(updatedCharacter.str).to.equal(17);
     });
 
     it("Should fail to update character if not owner", async function () {
       const newAbilityScores = {
-        timestamp: Math.floor(Date.now() / 1000),
+        name: ethers.encodeBytes32String("Aragorn"),
+        raceClass: 0,
         level: 2,
         str: 17,
         dex: 15,
@@ -184,7 +186,7 @@ describe("CharacterSheetToken", function () {
     });
 
     it("Should return correct character data", async function () {
-      const character = await characterSheetToken.getCharacter(tokenId);
+      const character = await characterSheetToken.getLastCharacterShot(tokenId);
       expect(character.name).to.equal(ethers.encodeBytes32String("Legolas"));
       expect(character.raceClass).to.equal(8);
       expect(character.level).to.equal(3);
@@ -312,7 +314,8 @@ describe("CharacterSheetToken", function () {
     let totalUpdateGas = 0n;
     for (let i = 0; i < 50; i++) {
       const abilityScores = {
-        timestamp: 0, // ignored by contract, will be set to block.timestamp
+        name: ethers.encodeBytes32String("GasHero"),
+        raceClass: 0,
         level: 1 + i > 20 ? 20 : 1 + i,
         str: 10 + Math.floor(i % 9),
         dex: 10 + Math.floor((i + 1) % 9),
@@ -328,27 +331,16 @@ describe("CharacterSheetToken", function () {
     // Print gas for last update
     console.log("Everage update gas:", (totalUpdateGas / 50n).toString());
 
-    const data = characterSheetToken.interface.encodeFunctionData("getCharacter", [tokenId]);
-    const gas = await ethers.provider.estimateGas({
-      to: addr1.address,
-      data: data,
-    });
-    console.log("Gas getCharacter:", gas.toString());
-
-    const getCharTx = await characterSheetToken.getCharacter(tokenId);
-    expect(getCharTx.name).to.equal(char.name);
-    expect(getCharTx.level).to.equal(1);
-
     // Gas measurement for getCharacterLastAbilityScores using a transaction and receipt
-    const data1 = characterSheetToken.interface.encodeFunctionData("getCharacterLastAbilityScores", [tokenId]);
+    const data1 = characterSheetToken.interface.encodeFunctionData("getLastCharacterShot", [tokenId]);
     const gas1 = await ethers.provider.estimateGas({
       to: addr1.address,
       data: data1,
     });
-    console.log("Gas getLastAbilityScores:", gas1.toString());
+    console.log("Gas getLastCharacterShot:", gas1.toString());
 
     // Get last ability scores and check values
-    const lastScores = await characterSheetToken.getCharacterLastAbilityScores(tokenId);
+    const lastScores = await characterSheetToken.getLastCharacterShot(tokenId);
     expect(lastScores.level).to.equal(20);
     expect(lastScores.str).to.equal(10 + Math.floor(49 % 9));
     expect(lastScores.dex).to.equal(10 + Math.floor((49 + 1) % 9));
